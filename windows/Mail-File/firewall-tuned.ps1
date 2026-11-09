@@ -24,6 +24,25 @@ $RequiredUDP = @()
 # ---- team management ports ----
 $TeamTCP = @(3389, 5985)            # RDP, WinRM (unrestricted - allow lists are banned)
 
+# ---- interactive extras ON TOP of the baked baseline ----
+function Read-PortList {
+  param([string]$Label)
+  Write-Host ""
+  Write-Host "Enter EXTRA inbound $Label ports to allow on top of the baked baseline (blank = none)." -ForegroundColor Cyan
+  $raw = Read-Host "$Label extra ports"
+  if ([string]::IsNullOrWhiteSpace($raw)) { return @() }
+  $out = @()
+  foreach ($t in ($raw -split "," | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" })) {
+    if ($t -match '^\d{1,5}$' -and [int]$t -ge 1 -and [int]$t -le 65535) { $out += [int]$t }
+    else { Write-Host "Ignoring invalid port: $t" -ForegroundColor Red }
+  }
+  return ($out | Sort-Object -Unique)
+}
+$ExtraTCP = Read-PortList -Label "TCP"
+$ExtraUDP = Read-PortList -Label "UDP"
+$RequiredTCP = ($RequiredTCP + $ExtraTCP) | Sort-Object -Unique
+$RequiredUDP = ($RequiredUDP + $ExtraUDP) | Sort-Object -Unique
+
 $GroupName  = "CyberForce2026 - MailFile"
 $BackupDir  = "C:\CF-Toolkit\FirewallBackups"
 $TS         = Get-Date -Format "yyyyMMdd-HHmmss"

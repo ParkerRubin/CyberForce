@@ -29,6 +29,26 @@ if (-not $ReportOnly -and -not $ConfirmAB) {
 
 $RequiredTCP = @(8088, 3306)      # Ignition, MySQL historian
 $TeamTCP     = @(3389)            # RDP only (no SSH on this box)
+
+# ---- interactive extras ON TOP of the baked baseline ----
+function Read-PortList {
+  param([string]$Label)
+  Write-Host ""
+  Write-Host "Enter EXTRA inbound $Label ports to allow on top of the baked baseline (blank = none)." -ForegroundColor Cyan
+  Write-Host "ASSUME-BREACH box: every extra rule risks Red-team or scoring disruption." -ForegroundColor Yellow
+  $raw = Read-Host "$Label extra ports"
+  if ([string]::IsNullOrWhiteSpace($raw)) { return @() }
+  $out = @()
+  foreach ($t in ($raw -split "," | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" })) {
+    if ($t -match '^\d{1,5}$' -and [int]$t -ge 1 -and [int]$t -le 65535) { $out += [int]$t }
+    else { Write-Host "Ignoring invalid port: $t" -ForegroundColor Red }
+  }
+  return ($out | Sort-Object -Unique)
+}
+$ExtraTCP = Read-PortList -Label "TCP"
+$ExtraUDP = Read-PortList -Label "UDP"
+$RequiredTCP = ($RequiredTCP + $ExtraTCP) | Sort-Object -Unique
+$RequiredUDP = ($RequiredUDP + $ExtraUDP) | Sort-Object -Unique
 $GroupName   = "CyberForce2026 - HMI"
 $BackupDir   = "C:\CF-Toolkit\FirewallBackups"
 $TS          = Get-Date -Format "yyyyMMdd-HHmmss"

@@ -53,29 +53,26 @@ CyberForce\
     wininfo.ps1                  inventory: ports<->rules, unsigned bins, LLMNR/mDNS/SSDP, Run keys
     triage_full.ps1              fast triage: SUMMARY.txt, LOLBins+cmdlines, targeted Security events
     tools.ps1                    Sysinternals installer (ProcExp, Autoruns, Sigcheck, TCPView)
-    firewall.ps1                 GENERIC interactive firewall (prompts TCP + UDP ports per box)
     Mail-File\                   rotate-creds.ps1 | firewall-tuned.ps1 | REQUIRED-PORTS.md
     AD\                          rotate-creds.ps1 | firewall-tuned.ps1 | firewall-ad.ps1 | REQUIRED-PORTS.md
     HMI\                         rotate-creds.ps1 | firewall-tuned.ps1 (-ReportOnly) | REQUIRED-PORTS.md
   linux\                         <- generic Linux toolkit (push to Task / PLC1 / PLC2)
     linuxinfo.sh                 inventory, --save writes Inventory_<host>_<ts>/inventory.txt
-    firewall.sh                  GENERIC interactive firewall (prompts TCP + UDP ports; ufw OR firewalld)
     readme.md                    manual hardening notes (passwd, rc customization, ufw, threat hunt)
     Task\                        rotate-creds.sh | firewall-tuned.sh | REQUIRED-PORTS.md
     PLC1\                        rotate-creds.sh | firewall-tuned.sh | REQUIRED-PORTS.md
     PLC2\                        rotate-creds.sh | firewall-tuned.sh | REQUIRED-PORTS.md
-  reference\                     cmd-cheatsheet.md
+  reference\                     cmd-cheatsheet.md | firewall-generic.ps1 | firewall-generic.sh
   README.md
 ```
 
-- **Base firewall scripts are interactive on purpose** (they ask which TCP + UDP ports to allow, which is the only really box-dependent question) so ONE script serves the whole OS family; each prints the required-port cheat sheet for that OS before prompting.
-- Each machine folder holds the host-specific scripts: `rotate-creds` + `firewall-tuned` (same logic, ports baked in, no thinking needed on comp day) + `REQUIRED-PORTS.md` cheat for the base firewall prompts.
+- **The canonical firewall per box lives in its machine folder** (`firewall-tuned.*`): that machine's scored ports are hard-wired, and the script still prompts for EXTRA TCP/UDP ports on top (same as the old generic). The generic scripts moved to `reference\` for two uses only: the **Anomaly VM** (no folder, unknown services until comp day) and emergency re-wiring when a scored port changes mid-event.
 
 Run order per box on Nov 2 (AWS access day): `rotate-creds` -> `firewall(-tuned)` -> `snapshot` -> `wininfo`/`linuxinfo`; then repeat snapshot on an interval and watch dnp3/modbus/Ignition/MySQL.
 
 ### Generic firewall notes
-- `windows\firewall.ps1` asks TCP + UDP to allow; it does NOT prompt for source-address restrictions (banned this year). RDP 3389 goes in unrestricted.
-- Both restrictive prompts in the tuned versions preserve the SAME no-allow-list guarantee.
+- Machine folders hold the only firewall you run in normal flow (`firewall-tuned.*`); nothing there prompts for source-address restrictions (banned this year); RDP 3389 goes in unrestricted.
+- `reference\firewall-generic.ps1/.sh` exists ONLY for the Anomaly VM and unplanned port changes; it prompts TCP + UDP from scratch and prints the port cheat sheet before asking.
 
 ---
 

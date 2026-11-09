@@ -23,12 +23,30 @@ if (-not $isAdmin) { Write-Host "ERROR: Run PowerShell as Administrator." -Foreg
 # ---- scored-required ports ----
 $RequiredTCP = @(389, 22)             # LDAP, SSH
 $RequiredUDP = @(161)                 # SNMP  (UDP! - protocol matters, scoreboard tests UDP)
-# ---- DC baseline (baked in, do not edit) ----
 $BaselineTCP = @(53,88,135,139,389,445,464,636,3268,3269)
 $BaselineUDP = @(53,88,123,389,464)
 $RpcRange    = "49152-65535"
 # ---- team management ports ----
 $TeamTCP = @(3389, 5985)              # RDP, WinRM (unrestricted - allow lists are banned)
+
+# ---- interactive extras ON TOP of the baked baseline ----
+function Read-PortList {
+  param([string]$Label)
+  Write-Host ""
+  Write-Host "Enter EXTRA inbound $Label ports to allow on top of the baked baseline (blank = none)." -ForegroundColor Cyan
+  $raw = Read-Host "$Label extra ports"
+  if ([string]::IsNullOrWhiteSpace($raw)) { return @() }
+  $out = @()
+  foreach ($t in ($raw -split "," | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" })) {
+    if ($t -match '^\d{1,5}$' -and [int]$t -ge 1 -and [int]$t -le 65535) { $out += [int]$t }
+    else { Write-Host "Ignoring invalid port: $t" -ForegroundColor Red }
+  }
+  return ($out | Sort-Object -Unique)
+}
+$ExtraTCP = Read-PortList -Label "TCP"
+$ExtraUDP = Read-PortList -Label "UDP"
+$RequiredTCP = ($RequiredTCP + $ExtraTCP) | Sort-Object -Unique
+$RequiredUDP = ($RequiredUDP + $ExtraUDP) | Sort-Object -Unique
 
 $GroupName = "CyberForce2026 - AD"
 $BackupDir = "C:\CF-Toolkit\FirewallBackups"
