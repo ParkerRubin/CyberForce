@@ -1,4 +1,4 @@
-# CyberForce 2026 Toolkit
+﻿# CyberForce 2026 Toolkit
 
 Blue Team scripts for the **DOE CyberForce Competition — November 13–14, 2026, Tinley Park Convention Center (Chicagoland)**.
 Scenario: operations team for **Vulcana Dynamics Ltd. (VDL)**, the sole geothermal power utility of the Kaldera Archipelago. Opened with an unexplained **2:36 grid outage**; the **Island Defense Radar Network** depends on your grid staying up.
@@ -62,11 +62,21 @@ CyberForce\
     Task\                        rotate-creds.sh | firewall-tuned.sh | REQUIRED-PORTS.md
     PLC1\                        rotate-creds.sh | firewall-tuned.sh | REQUIRED-PORTS.md
     PLC2\                        rotate-creds.sh | firewall-tuned.sh | REQUIRED-PORTS.md
-  reference\                     cmd-cheatsheet.md | firewall-generic.ps1 | firewall-generic.sh
+  reference\                     cmd-cheatsheet.md | CCDC-command-dictionary.md | firewall-generic.ps1 | firewall-generic.sh
+    pentest\                     web-recon.sh | web-vuln-tests.sh | master-vuln-checklist.md | install.sh
   README.md
 ```
 
 - **The canonical firewall per box lives in its machine folder** (`firewall-tuned.*`): that machine's scored ports are hard-wired, and the script still prompts for EXTRA TCP/UDP ports on top (same as the old generic). The generic scripts moved to `reference\` for two uses only: the **Anomaly VM** (no folder, unknown services until comp day) and emergency re-wiring when a scored port changes mid-event.
+
+### Self-pentest (attack your own boxes first)
+`reference\pentest\` + `CCDC-command-dictionary.md` are tools for the **self-pentest lane**: rules allow testing your OWN infrastructure and require finding its vulnerabilities for SecDoc (rubric wants a big mitigated vuln list; other infra off-limits).
+- Prep phase (Nov 2-13): run `web-recon.sh` against http://10.0.x.145 (Task WP site), 10.0.x.140:1080 (HFS), 10.0.x.142:8088 → ffuf/nuclei/quick-wins; then `web-vuln-tests.sh` on every form/param you find. Walk `master-vuln-checklist.md` per box (its sections A web / B creds / C Linux / + Windows-AD cover exactly what winpeas/linpeas surface too).
+- The FAU `report-generator` (in the FAU repo, not copied here) has ~35 prewritten findings (sudoers, suid, shadow, passwd, rootlogin, privatekeys, SQLi, XSS, NTLMv1, DefaultCredService, OutdatedService, weakDomainPassPolicy...) — perfect source language for the SecDoc "known vulnerabilities" table with CVSS.
+### Scripts-first philosophy
+- Everything ships as a **portable script or pre-staged binary run on demand** (winPEAS/linpeas/nmap/nuclei/ffuf) — **no new services/daemons installed** on scoring boxes.
+- Default output = **one short console report per run** for hand-triage; files only where an explicit flag (`--save` / `-Save`) asks.
+- winpeas/linpeas/nuclei are for the **deep/odd spots** (persistence, privesc, web edges) — the quick truths come from netstat/tasklist style one-liners in cmd-cheatsheet.md and the vulnscan scripts' console output.
 
 Run order per box on Nov 2 (AWS access day): `rotate-creds` -> `firewall(-tuned)` -> `snapshot` -> `wininfo`/`linuxinfo`; then repeat snapshot on an interval and watch dnp3/modbus/Ignition/MySQL.
 
@@ -75,34 +85,37 @@ Run order per box on Nov 2 (AWS access day): `rotate-creds` -> `firewall(-tuned)
 - `reference\firewall-generic.ps1/.sh` exists ONLY for the Anomaly VM and unplanned port changes; it prompts TCP + UDP from scratch and prints the port cheat sheet before asking.
 
 ---
+## Planned scripts (lean build list)
 
-## Planned: defensive enumeration / hardening / vuln-hunting scripts (build list)
+Philosophy: **scripts not services** - portable scripts + run-on-demand binaries only (winPEAS/linpeas/nmap/nuclei/ffuf), nothing installed on scoring boxes. Default output is a **short console report** for hand-triage; files only behind an explicit `--save`/`-Save` flag. Deep tools live in `reference\pentest\` or a pre-staged toolkit; the vulnscan scripts below just make the obvious answers faster.
 
-Everything below is **report-only** style: none of these change the system, they surface what to fix so hardening choices are deliberate and SecDoc-documented (and nothing breaks scoring without review) unless they clearly modify only state safe to change (rotate-creds).
+### Windows (windows\)
+1. **`win-vulnscan.ps1`** - one console report, sections in priority order:
+   - accounts: net user/admins/hidden `$` accounts/rid500/PasswordNeverExpires/blank-password detect
+   - persistence: Run+RunOnce (HKCU/HKLM), Winlogon Shell/UserInit, IFEO, AppInit_DLLs, WMI event subs, netsh portproxy, hosts file
+   - scheduled tasks: non-Microsoft, Action path+args+RunAs+trigger, boot/idle triggers flagged (the winpeas overlap is intentional - ours filters to CyberForce signal)
+   - services: auto-start outside C:\Windows, unquoted paths, writable dirs, recent 7045s
+   - posture: Defender status+exclusions, SMBv1, RDP NLA, WinRM granted-to, shares w/ Everyone, LAPS, AlwaysInstallElevated, LmCompat
+   - creds/PS history: ConsoleHost_history.txt, cmdkey /list, saved creds locations (greps the dictionary's guidance)
+   - deltas: compare against snapshot.ps1 CSVs when present ("NEW SINCE BASELINE" flags)
+2. **`task-sweep.ps1`** (tiny, optional) - just the scheduled-task+service section standalone for fast re-runs.
+3. Pre-staged: winPEASx64.exe, nmap - run manually when we need the deep sweep (their rules: portable binaries, no install).
 
-### Web vulnerabilities
-- **`green-check` (Linux)** — automate all 12 Green survey items on Task's WordPress-style site (landing page, orange accent #ea4524, nav order, volcano-1.png banner, tagline, About Us, both logins/APIs + Admin button visibility, users list, footer, Geothermal Data charts, logo, chatbot reply) into a pass/fail + curl-reproduce script for every listed item. This site is GOLD for 1500 Green pts: checking it from OUTSIDE the box catches breakage you caused with your own hardening.
-- **`web-vulnscan` (bash + PS variant)** — curl-based, unauthenticated web scanner for anything listening on 80/1080/8080 in your range: HTTP method reachability (OPTIONS/TRACE/PUT/DELETE), directory indexing, common exposure probes (.git/HEAD, .env, wp-config.php.bak, backup.zip, /admin, /wp-admin, /phpmyadmin, /xmlrpc.php, /wp-json/wp/v2/users), server banner fingerprints, missing security headers, default-credential attempt against exposed login forms (blueteam-style credentials are public knowledge in the repo), reflect-on-input quick XSS/SQLi probes into obvious query parameters. Every hit = evidence with reproducible curl lines.
+### Linux (linux\)
+1. **`linux-vulnscan.sh`** - same shape, console report:
+   - accounts/shells/uid0/empty passwords/sudoers (NOPASSWD+wildcards)/wheel members
+   - persistence: cron (system+user+at), systemd units+timers (Exec paths outside /usr/bin), rc.local, profile.d, authorized_keys w/ fingerprints, LD_PRELOAD/ld.so.preload
+   - classes: SUID/SGID shortlist, world-writable in /etc /usr, PATH dots, kernel version
+   - sshd posture: PermitRootLogin/PasswordAuth/MaxAuthTries vs planned values
+   - creds greps: passw|secret|token in /etc /srv /var/www + .ssh private keys + history
+   - deltas: vs linuxinfo.sh --save output when present
+2. Pre-staged: linpeas.sh (bin), nmap, tcpdump usage one-liners from the dictionary for AB boxes (pcap > txt).
 
-### Windows enumeration (winPEAS-style, homemade, opensource)
-- **`win-vulnscan.ps1`** — patch level + hotfixes, Defender status/exclusions (Active/defog/off), services with unquoted paths, weak service binary/folder ACLs, mismatched service Account-vs-install, scheduled tasks writable by non-admins, AlwaysInstallElevated on 2 HK keys, LLMNR/mDNS/NetBIOS exposure (cross-ref wininfo), RDP NLA?, WinRM allowed from where, SMBv1 status, SMB signing, shares with Everyone/Anonymous, installed-software quick inventory (flag old versions), local password/lockout policy, users with PasswordNeverExpires or blank flags, PS Read-Host perms, autoruns by helper, saved PS history, greps Creds: locations (cmdkey /runas?), LAPS presence, current shell Win-who|priv check -> printable findings with a "how to fix" line under each.
-- **`win-backdoor-hunter.ps1`** — persistence-focused deep sweep: Run/RunOnce (HKCU + HKLM), Winlogon Shell/UserInit, custom services binaries outside standard dirs, Scheduled Task XML (creators, actions, triggers), WMI Event Subscriptions, IFEO entries, AppInit_DLLs, netsh portproxy entries, hosts-file edits, hidden accounts (names ending in '$'), accounts created since last snapshot delta, recently created tasks (Sec Events 4698/7045), processes running unsigned/TEMP-path binaries, established connections on unknown ports (PID map), alternate data streams. Pairs with snapshot.ps1 to diff baseline vs now.
+### Web + ICS
+1. **`green-check`** (pure curl, mirrors your web-recon style) - the 12 Green survey items in one console pass/fail, optional `-save` log.
+2. **`ics-watch`** - console-only live view: required ICS ports (502/20000/1883/8080/8088) open/closed + dnp3/modbus/Ignition service status + who is connected right now, refreshed; writes pcap ONLY on explicit flag (`tcpdump -C` ring, off by default).
+3. Deep web surface stays manual: your `web-recon.sh` / `web-vuln-tests.sh` + nuclei against own boxes only (rules of engagement in the section above).
 
-### Linux enumeration (linpeas-style, homemade, opensource)
-- **`linux-vulnscan.sh`** — SUID/SGID inventory (non-standard bins highlighted), world-writable files/dirs incl. /etc content, empty-password users in shadow, users with login shells, uid-0 duplicates, sudoers/l-sudo audit (NOPASSWD, wildcards, Cmnd_Alias), PATH entries with '.' or dirs writable by us, cron files user/system, systemd timers + units writable, rc.local/profile.d scripts, kernel + distro version vs known CVE era (report only), package counts (upgradable via zypper/apt --dry-run if safe), exposes cleartext config greps (passw|secret|token in /etc /srv /var/www), .ssh private keys anywhere, NFS exports + no_root_squash, mounted shares, umask values, /etc/ssh/sshd_config harden-check (PermitRootLogin, PasswordAuthorization, X11, MaxAuthTries), firewall status consistency with required ports, per-user bash history depth, any HTTP service banner/version on 80/3306/502 listening interfaces.
-- **`linux-backdoor-hunter.sh`** — authorized_keys across all homes (with fingerprints), root cron entries + at jobs, systemd units added/modified recently (mtime), ExecStart paths outside /usr/bin, LD_PRELOAD, /etc/ld.so.preload, recent mtimes under /etc and /usr/bin, processes running deleted binaries (via /proc), outbound established connections with owning user, history files, shell rc injections (append logs, base64 blobs), /dev/shm droppers, SSH AuthorizedKeysFile alternate paths, listening sockets owned by accounts that never appear in passwd logically, systemd socket activations, swapped sshd binary path. Pairs with linuxinfo.sh --save outputs.
-
-### Hardening checklists (enumerate -> print recommended fix commands, NOT applied automatically)
-- **`win-hardening-check.ps1`** — prints a hardening scorecard per box: password/lockout policy gaps, LLMNR/mDNS/SSDP still on, SMBv1 on, RDP NLA off, auto logins, stale admin group members, service account defaults, Defender exclusions, unquoted service paths, legacy protocols, NTLMv1 (via LmCompatibility), 32-bit legacy bins — each with the exact one-line command to fix (commented as copy/paste lines), grouped "safe day-one" vs "confirm-with-team".
-- **`linux-hardening-check.sh`** — same idea: shells in passwd, sshd knobs, umask, cron perms, world-write surface, kernel-sysctl values, suggestions grouped the same.
-- **`svc-watch`** — uptime logger for required ports (Blue evidence): loops over the box's required ports (from REQUIRED-PORTS.md), logs `timestamp|port|up/down` every 60s + immediate Discord-friendly alert line in the log file if anything went down, systemd timer + schtasks generator included.
-
-### ICS / OT
-- **`ics-monitor` (bash + PS)** — read-only passive watch of 502/20000/1883/8080/8088: TCP flags, per-foreign-port connection counters, + periodic tcpdump ring buffer for pcap capture sized for the comp weekend; Modbus register/coil read-only dump vs documented normal thresholds (ESD, wellhead pressure/floor/temp), via the OpenPLC index/modbus register list endpoint. No writes/commands to PLCs anywhere.
-- **`ab-evidence` (bash + PS)** — read-only assume-breach evidence pack builder: log source enable check, ssh-involved auth lines, capture of all Windows Security/user + System/App events of interest, auditd enablement (documented, from official recommendation only), full netstat/-p lsof sweep, service unit dumps, registry Run keys, ICS historian DB table list/careers read-only; writes everything into structured pack + a README of what was gathered and why.
-
-### Documentation / score support
-- **`secdoc-gen`** — merges snapshot/wininfo/linuxinfo CSVs into the comp Security Documentation Template structure (asset inventory + network diagram table + known-vulnerability list starter rows from the win-vulnscan/linux-vulnscan findings).
-- **`cred-sheet` helpers** — after rotate-creds runs: quick import of the output sheets into a single team password vault file (never store plaintext in a public place; last-resort'). Just centralizing.
-
-Order of build (suggested): win-vulnscan.ps1 & linux-vulnscan.sh green first, use, web-vulnscan, backdoor-hunters, supporting hardening-checks and ML `svc-watch` for uptime, ics/ab packs before comp weekend.
+### Cross-cutting
+1. **`baseline-diff`** (both OS) - "everything new since the good snapshot": console table from two snapshot/linuxinfo runs; no txt dump unless -save.
+2. **`secdoc-gen`** (PS + bash) - the ONE file-producing tool by design: merges snapshot/wininfo/linuxinfo + vulnscan findings into the official SecDoc template tables (asset inventory, ports, vuln list w/ CVSS-ready rows; pairs with the FAU report-generator prewrites for language).
