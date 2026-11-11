@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
-# fw-allowlist.sh - interactive default-deny iptables baseline for Horse Plinko / CCDC boxes.
+# fw-allowlist.sh - interactive default-deny iptables baseline.
 #
 # What it does:
-#   * flushes existing rules (wipes anything Red Team planted)
+#   * flushes existing rules (wipes anything planted)
 #   * default-deny inbound + forward, allow outbound
 #   * always keeps loopback + established/related connections
 #   * PROMPTS you for the TCP ports to allow, then opens each one to any source
@@ -15,7 +15,7 @@
 # !! INCLUDE SSH (22) AND EVERY SCORED PORT or you will lock out yourself/scoring !!
 #    Scoring hits from many IPs, so scored ports are opened to ANY source on purpose.
 #
-# Fedora note (ignition): Fedora uses firewalld, which clashes with raw iptables.
+# Fedora note: Fedora uses firewalld, which clashes with raw iptables.
 #    Stop it first:  sudo systemctl stop firewalld   (then run this)
 #    or use firewalld instead:  sudo firewall-cmd --permanent --add-port=80/tcp ; sudo firewall-cmd --reload
 
@@ -39,8 +39,8 @@ if [ "$#" -gt 0 ]; then
 else
   echo "[*] Enter the TCP ports to ALLOW inbound, space-separated."
   echo "    Include 22 (SSH) and every scored port. Examples:"
-  echo "      guidance/ignition web:  22 80 443 8080"
-  echo "      with extra services:    22 80 443 8080 3306"
+  echo "      minimal web:  22 80 443 8080"
+  echo "      with extra services:  22 80 443 8080 3306"
   read -rp "Ports: " PORTS
 fi
 
@@ -105,4 +105,4 @@ fi
 
 echo
 echo "[OK] Firewall baseline applied."
-echo "[>] NOW VERIFY: make sure jmoney can still SSH in and your scored services are still green."
+echo "[>] NOW VERIFY: make sure you can still SSH in and your scored services are still green."
