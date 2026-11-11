@@ -1,12 +1,29 @@
-#!/bin/bash
-# shellcheck disable=SC2016
+#!/usr/bin/env bash
+# ============================================================
+# CYBERFORCE 2026 — RESET PASSWORDS (passwd.sh)
+# Resets the password for every human user with a valid login
+# shell, generating a random 4-word passphrase + "123!".
+# Example: "HotelCyberWolfMoon123!"
 #
-# This script resets the password for all users with a valid login shell.
-# It generates a unique, random 4-word passphrase + "123!"
-# for EVERY user.
-# Example Result: "HotelCyberWolfMoon123!"
+# Output is saved like rotate-creds.sh:
+#   timestamped credfile in $HOME (root's home), chmod 600.
+#
+# NEVER touch: SCORE1, SCORE2, PATCH, historian, root, openplc
+# Override with: PROTECTED='...' sudo bash passwd.sh
+# ============================================================
+set -eu
 
-set -e
+if [[ $EUID -ne 0 ]]; then
+  echo "ERROR: run with sudo (sudo bash passwd.sh)" >&2
+  exit 1
+fi
+
+PROTECTED="${PROTECTED:-SCORE1|SCORE2|PATCH|historian|root|openplc}"
+TS=$(date +%Y%m%d-%H%M%S)
+CREDFILE="$HOME/passwd-creds-$TS.txt"
+touch "$CREDFILE" && chmod 600 "$CREDFILE"
+
+log() { echo "$1" | tee -a "$CREDFILE"; }
 
 # A massive list of simple, easy-to-type words
 WORDS=(
@@ -27,16 +44,16 @@ WORDS=(
   "Nova" "Void" "Atom" "Ion" "Volt" "Watt" "Flux" "Core" "Neon" "Zinc"
   "Iron" "Lead" "Acid" "Base" "Wave" "Beam" "Ray" "Dust" "Gas"
   # Tech
-  "Cyber" "Logic" "Data" "Code" "Linux" "Root" "Admin" "User" "Host"
+  "Cyber" "Logic" "Data" "Code" "Linux" "Admin" "User" "Host"
   "Byte" "Bit" "Node" "Grid" "Link" "Net" "Web" "Wifi" "Disk" "File"
-  "Java" "Perl" "Ruby" "Rust" "Go" "Bash" "Shell" "Kern" "Boot" "Load"
+  "Java" "Perl" "Rust" "Bash" "Shell" "Kern" "Boot" "Load"
   # Nature
   "River" "Lake" "Pond" "Sea" "Ocean" "Rain" "Wind" "Snow" "Ice" "Fire"
-  "Sand" "Rock" "Tree" "Leaf" "Root" "Rose" "Lily" "Fern" "Moss" "Hill"
-  "Peak" "Cliff" "Cave" "Dune" "Reef" "Tide" "Wave" "Storm" "Hail" "Mist"
+  "Sand" "Rock" "Tree" "Leaf" "Rose" "Lily" "Fern" "Moss" "Hill"
+  "Peak" "Cliff" "Cave" "Dune" "Reef" "Tide" "Storm" "Hail" "Mist"
   # Food
   "Apple" "Mango" "Lemon" "Berry" "Grape" "Melon" "Peach" "Plum" "Pear"
-  "Lime" "Kiwi" "Fig" "Date" "Nut" "Corn" "Rice" "Bean" "Cake" "Pie"
+  "Lime" "Kiwi" "Fig" "Date" "Corn" "Rice" "Bean" "Cake" "Pie"
   "Taco" "Pizza" "Soda" "Tea" "Milk" "Soup" "Beef" "Pork" "Fish" "Salt"
   # Objects
   "Book" "Desk" "Lamp" "Pen" "Door" "Wall" "Roof" "Key" "Lock" "Box"
@@ -51,34 +68,33 @@ WORDS=(
   "New" "Old" "True" "False" "Real" "Safe" "Wild" "Calm" "Brave" "Wise"
 )
 
-echo "Generating unique passphrases ending in 123!..."
-echo "---------------------------------------------------"
-echo "USER,PASSWORD"
-echo "---------------------------------------------------"
+log "== passwd.sh — password reset — $TS =="
+log "Protected (skipped): $PROTECTED"
+log ""
+log "USER,PASSWORD"
 
-# Loop through users with a login shell in /etc/passwd
-for u in $(cat /etc/passwd | grep -E "/bin/.*sh" | cut -d":" -f1); do
+# Loop through users with a login shell, skipping protected accounts
+skipped=""
+for u in $(getent passwd | awk -F: '$7 ~ /(bash|sh|zsh)$/ {print $1}'); do
+  if echo "$u" | grep -Eq "^($PROTECTED)$"; then
+    skipped="$skipped $u"
+    continue
+  fi
 
-    # --- Generate the Password ---
-    
-    # 1. Pick 4 random words
-    W1=${WORDS[$((RANDOM % ${#WORDS[@]}))]}
-    W2=${WORDS[$((RANDOM % ${#WORDS[@]}))]}
-    W3=${WORDS[$((RANDOM % ${#WORDS[@]}))]}
-    W4=${WORDS[$((RANDOM % ${#WORDS[@]}))]}
+  # 1. Pick 4 random words
+  W1=${WORDS[$((RANDOM % ${#WORDS[@]}))]}
+  W2=${WORDS[$((RANDOM % ${#WORDS[@]}))]}
+  W3=${WORDS[$((RANDOM % ${#WORDS[@]}))]}
+  W4=${WORDS[$((RANDOM % ${#WORDS[@]}))]}
 
-    # 2. Combine them with the hardcoded "123!" suffix
-    NEW_PASS="${W1}${W2}${W3}${W4}123!"
+  # 2. Combine with the hardcoded "123!" suffix
+  NEW_PASS="${W1}${W2}${W3}${W4}123!"
 
-    # --- Apply and Log ---
-
-    # Change the password
-    echo "$u:$NEW_PASS" | chpasswd
-
-    # Print the result so you can copy it to your notes
-    echo "$u,$NEW_PASS"
-
+  # Change the password and record it in the credfile
+  echo "$u:$NEW_PASS" | chpasswd
+  log "$u,$NEW_PASS"
 done
 
-echo "---------------------------------------------------"
-echo "Password reset complete."
+log ""
+[[ -n $skipped ]] && log "SKIPPED (protected):$skipped"
+log "=== DONE. Creds saved in: $CREDFILE (chmod 600) ==="
