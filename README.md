@@ -49,6 +49,8 @@ Red 2500 (AB attack-chain reporting 1000 + external pentest 1500) · Blue 2500 (
 ```
 CyberForce\
   windows\                       <- generic Windows toolkit (push to Mail-File / AD / HMI)
+    win-vulnscan.ps1             winPEAS-style console report: accounts/persistence/tasks/services/posture/creds/listeners (-Save = one file)
+    install-tools.ps1            stages winPEASx64.exe, winPEAS.bat, 7zr.exe into %USERPROFILE%\cf-tools (run BEFORE comp day)
     snapshot.ps1                 baseline: firewall .wfw + users/services/netstat/processes/tasks (run every 15 min)
     wininfo.ps1                  inventory: ports<->rules, unsigned bins, LLMNR/mDNS/SSDP, Run keys
     triage_full.ps1              fast triage: SUMMARY.txt, LOLBins+cmdlines, targeted Security events
@@ -57,6 +59,8 @@ CyberForce\
     AD\                          rotate-creds.ps1 | firewall-tuned.ps1 | firewall-ad.ps1 | REQUIRED-PORTS.md
     HMI\                         rotate-creds.ps1 | firewall-tuned.ps1 (-ReportOnly) | REQUIRED-PORTS.md
   linux\                         <- generic Linux toolkit (push to Task / PLC1 / PLC2)
+    linux-vulnscan.sh            linpeas-style console report: accounts/persistence/SUID/sshd/creds/listeners/ICS services (--save = one file)
+    install-tools.sh             distro-detect (apt/zypper): nmap, tcpdump, gpg, sshpass + stages linpeas.sh into ~/cf-tools
     linuxinfo.sh                 inventory, --save writes Inventory_<host>_<ts>/inventory.txt
     readme.md                    manual hardening notes (passwd, rc customization, ufw, threat hunt)
     Task\                        rotate-creds.sh | firewall-tuned.sh | REQUIRED-PORTS.md
@@ -89,27 +93,28 @@ Run order per box on Nov 2 (AWS access day): `rotate-creds` -> `firewall(-tuned)
 
 Philosophy: **scripts not services** - portable scripts + run-on-demand binaries only (winPEAS/linpeas/nmap/nuclei/ffuf), nothing installed on scoring boxes. Default output is a **short console report** for hand-triage; files only behind an explicit `--save`/`-Save` flag. Deep tools live in `reference\pentest\` or a pre-staged toolkit; the vulnscan scripts below just make the obvious answers faster.
 
-### Windows (windows\)
-1. **`win-vulnscan.ps1`** - one console report, sections in priority order:
-   - accounts: net user/admins/hidden `$` accounts/rid500/PasswordNeverExpires/blank-password detect
+### Windows (windows\) - DONE
+1. **`win-vulnscan.ps1`** [x BUILT] - one console report, sections in priority order (`-Save` = one transcript file):
+   - accounts: local users/admins/hidden `$` accounts/rid500/PasswordNeverExpires/blank-password detect
    - persistence: Run+RunOnce (HKCU/HKLM), Winlogon Shell/UserInit, IFEO, AppInit_DLLs, WMI event subs, netsh portproxy, hosts file
-   - scheduled tasks: non-Microsoft, Action path+args+RunAs+trigger, boot/idle triggers flagged (the winpeas overlap is intentional - ours filters to CyberForce signal)
-   - services: auto-start outside C:\Windows, unquoted paths, writable dirs, recent 7045s
-   - posture: Defender status+exclusions, SMBv1, RDP NLA, WinRM granted-to, shares w/ Everyone, LAPS, AlwaysInstallElevated, LmCompat
-   - creds/PS history: ConsoleHost_history.txt, cmdkey /list, saved creds locations (greps the dictionary's guidance)
-   - deltas: compare against snapshot.ps1 CSVs when present ("NEW SINCE BASELINE" flags)
-2. **`task-sweep.ps1`** (tiny, optional) - just the scheduled-task+service section standalone for fast re-runs.
-3. Pre-staged: winPEASx64.exe, nmap - run manually when we need the deep sweep (their rules: portable binaries, no install).
+   - scheduled tasks: non-Microsoft, Action path+args+RunAs+trigger, boot/idle triggers flagged
+   - services: auto-start outside C:\Windows, unquoted paths, recent 7045s
+   - posture: Defender status+exclusions, RDP NLA, LmCompat, shares w/ Everyone, LAPS, AlwaysInstallElevated
+   - creds/PS history: ConsoleHost_history.txt greps, cmdkey /list
+   - listeners: TCP w/ owning process path (odd-path flags)
+2. **`install-tools.ps1`** [x BUILT] - stages winPEASx64.exe, winPEAS.bat, 7zr.exe (anomaly USB unpacking) into `%USERPROFILE%\cf-tools`; SHA256 printed; Sysinternals stay via `tools.ps1`, nmap manual from laptop.
+3. Optional later: `task-sweep.ps1` (fast re-run of just tasks+services).
 
-### Linux (linux\)
-1. **`linux-vulnscan.sh`** - same shape, console report:
-   - accounts/shells/uid0/empty passwords/sudoers (NOPASSWD+wildcards)/wheel members
-   - persistence: cron (system+user+at), systemd units+timers (Exec paths outside /usr/bin), rc.local, profile.d, authorized_keys w/ fingerprints, LD_PRELOAD/ld.so.preload
-   - classes: SUID/SGID shortlist, world-writable in /etc /usr, PATH dots, kernel version
-   - sshd posture: PermitRootLogin/PasswordAuth/MaxAuthTries vs planned values
-   - creds greps: passw|secret|token in /etc /srv /var/www + .ssh private keys + history
-   - deltas: vs linuxinfo.sh --save output when present
-2. Pre-staged: linpeas.sh (bin), nmap, tcpdump usage one-liners from the dictionary for AB boxes (pcap > txt).
+### Linux (linux\) - DONE
+1. **`linux-vulnscan.sh`** [x BUILT] - same shape, console report (`--save` = one file):
+   - accounts: uid0 list, empty-password shadow, shell-capable users, sudoers NOPASSWD, wheel members, failed-SSH counts
+   - persistence: cron dirs+user crontabs+at, systemd units/timers (odd Exec paths, ICS units marked DO-NOT-TOUCH), rc.local, authorized_keys w/ fingerprints, ld.so.preload, profile/bashrc greps
+   - SUID shortlist (standard set whitelisted, odd ones flagged), world-writable /etc+/usr, PATH-dot check
+   - sshd posture: PermitRootLogin/PasswordAuth/MaxAuthTries/PermitEmptyPasswords
+   - creds greps: /etc conf files, bash_history, private keys, MySQL historian hints
+   - listeners (ss -tulpn) + established outbound + running-deleted-binaries (dropper tell) + ICS service status (dnp3/modbus/ignition/openplc)
+2. **`install-tools.sh`** [x BUILT] - distro-detect apt/zypper: nmap, tcpdump, gnupg, sshpass, lsof + stages linpeas.sh into `~/cf-tools` + usage one-liners (incl. tcpdump ring-pcap for AB boxes).
+3. Still manual: linpeas/nmap/tcpdump run-on-demand from the staged tools (pcap > txt on AB boxes).
 
 ### Web + ICS
 1. **`green-check`** (pure curl, mirrors your web-recon style) - the 12 Green survey items in one console pass/fail, optional `-save` log.
