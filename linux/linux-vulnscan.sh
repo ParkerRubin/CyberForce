@@ -7,12 +7,23 @@
 # Deep sweeps still belong to linpeas.sh (see install-tools.sh)
 # - this script filters to CyberForce signal.
 # Run as root for full visibility (works degraded without).
-# Usage: sudo ./linux-vulnscan.sh [--save]  (--save = ONE file)
+# Usage: sudo ./linux-vulnscan.sh [--save] [--fix]
+#   (--save = ONE file)
+#   (--fix  = ALSO auto-fix ONLY the safe class: SUID bits on binaries
+#            that are not standard (e.g. planted find). Reversible
+#            chmod u-s, logged with the original mode. NOTHING else is
+#            auto-changed: services, accounts, cron, keys, sudoers,
+#            world-writable files stay REPORT-ONLY - those need eyes.)
 # ============================================================
 
 set -u
-SAVE=0
-[ "${1:-}" = "--save" ] && SAVE=1
+SAVE=0; FIX=0
+for a in "$@"; do
+  case "$a" in
+    --save) SAVE=1;;
+    --fix)  FIX=1;;
+  esac
+done
 
 BOLD=$(tput bold 2>/dev/null || true)
 RED=$(tput setaf 1 2>/dev/null || true)
@@ -117,10 +128,26 @@ done
 # ---------------- SUID / PERMS ----------------
 section "SUID / WRITABLE"
 item "SUID binaries (non-standard flagged):"
+if [ "$FIX" -eq 1 ]; then
+  if [ "$(id -u)" -eq 0 ]; then
+    warn "FIX MODE ON: SUID bits on non-standard binaries WILL be removed (reversible)."
+  else
+    warn "FIX MODE ignored: not root - re-run with sudo to use --fix."
+    FIX=0
+  fi
+fi
 find / -xdev -perm -4000 -type f 2>/dev/null | while read -r b; do
   case "$b" in
     /usr/bin/su|/usr/bin/sudo|/usr/bin/passwd|/usr/bin/chsh|/usr/bin/chsh|/usr/bin/chfn|/usr/bin/gpasswd|/usr/bin/newgrp|/usr/bin/mount|/usr/bin/umount|/usr/bin/pkexec|/usr/bin/fusermount*|/usr/lib/openssh/ssh-keysign|/usr/lib/dbus-1.0/dbus-daemon-launch-helper|/usr/bin/su.real) item "   $b";;
-    *) flag "SUID: $b";;
+    *)
+      if [ "$FIX" -eq 1 ]; then
+        oldmode=$(stat -c '%a' "$b" 2>/dev/null)
+        chmod u-s "$b" 2>/dev/null \
+          && flag "FIXED: removed SUID from $b (was mode $oldmode; restore: sudo chmod u+s $b)" \
+          || flag "SUID: $b (chmod u-s FAILED - fix by hand)"
+      else
+        flag "SUID: $b (GTFOBins root-escalation risk - remove with sudo chmod u-s, or rerun with --fix)"
+      fi;;
   esac
 done
 item "World-writable /etc or /usr files:"
