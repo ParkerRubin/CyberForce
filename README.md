@@ -64,7 +64,7 @@ CyberForce\
     AD\                          rotate-creds.ps1 | firewall-tuned.ps1 | firewall-ad.ps1 | REQUIRED-PORTS.md
     HMI\                         rotate-creds.ps1 | firewall-tuned.ps1 (-ReportOnly) | REQUIRED-PORTS.md
   linux\                         <- generic Linux toolkit (push to Task / PLC1 / PLC2)
-    linux-vulnscan.sh            linpeas-style console report: accounts/persistence/SUID/sshd/creds/listeners/ICS services (--save = one file)
+    linux-vulnscan.sh            linpeas-style console report: accounts/persistence/SUID/sshd/creds/listeners/ICS services (--save = one file; --fix = safe auto-remediation; --fix-ssh = sshd hardening; AB boxes need --confirm-ab)
     install-tools.sh             distro-detect (apt/zypper): nmap, tcpdump, gpg, sshpass + stages linpeas.sh into ~/cf-tools
     linuxinfo.sh                 inventory, --save writes Inventory_<host>_<ts>/inventory.txt
     readme.md                    manual hardening notes (passwd, rc customization, ufw, threat hunt)

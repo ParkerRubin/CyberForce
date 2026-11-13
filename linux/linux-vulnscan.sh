@@ -7,21 +7,31 @@
 # Deep sweeps still belong to linpeas.sh (see install-tools.sh)
 # - this script filters to CyberForce signal.
 # Run as root for full visibility (works degraded without).
-# Usage: sudo ./linux-vulnscan.sh [--save] [--fix]
+# Usage: sudo ./linux-vulnscan.sh [--save] [--fix] [--fix-ssh] [--confirm-ab]
 #   (--save = ONE file)
 #   (--fix  = ALSO auto-fix ONLY the safe class: SUID bits on binaries
-#            that are not standard (e.g. planted find). Reversible
-#            chmod u-s, logged with the original mode. NOTHING else is
-#            auto-changed: services, accounts, cron, keys, sudoers,
-#            world-writable files stay REPORT-ONLY - those need eyes.)
+#            that are not standard, canonical file modes (shadow/sudoers/
+#            ssh keys/authorized_keys), lock empty-password and extra
+#            UID-0 accounts, enable auditd/ufw logging. Every fix is
+#            reversible, logged to /var/log/cf-changes.log, and /etc is
+#            tarred up first. NOTHING ambiguous is auto-touched.)
+#   (--fix-ssh = drop-in hardening: PermitRootLogin no, MaxAuthTries 3,
+#            LoginGraceTime 30, LogLevel VERBOSE - validated with sshd -t
+#            and rolled back automatically if it fails. Reloads sshd
+#            WITHOUT dropping your session. Scoring uses score1/score2,
+#            never root, so this cannot break it.)
+#   ASSUME-BREACH GUARD: if dnp3.service exists (PLC2), --fix/--fix-ssh
+#   are refused without --confirm-ab, per competition rules.
 # ============================================================
 
 set -u
-SAVE=0; FIX=0
+SAVE=0; FIX=0; FIXSSH=0; CONFIRM_AB=0
 for a in "$@"; do
   case "$a" in
     --save) SAVE=1;;
     --fix)  FIX=1;;
+    --fix-ssh) FIXSSH=1;;
+    --confirm-ab) CONFIRM_AB=1;;
   esac
 done
 
@@ -51,6 +61,43 @@ if [ "$(id -u)" -ne 0 ]; then
   warn "Not root: shadow, crontabs, some ACLs and logs will be limited."
 fi
 
+# ---------------- FIX ENGINE (Tier-1 safe actions only) ----------------
+# Protected accounts are NEVER touched by any automated path:
+# score1, score2, patch, historian, green-user, green-admin, openplc,
+# modbus, dnp3 (case-insensitive). ICS services are never stopped.
+CHANGELOG=/var/log/cf-changes.log
+logfix() { printf '%s [cf-fix] %s\n' "$(date '+%F %T')" "$1" >> "$CHANGELOG" 2>/dev/null || true; }
+
+# assume-breach detection: dnp3.service unit present = PLC2 = rules say extreme caution
+IS_AB=0
+systemctl list-unit-files 2>/dev/null | grep -q '^dnp3\.service' && IS_AB=1
+if [ "$IS_AB" -eq 1 ] && [ "$FIX" -eq 1 ] && [ "$CONFIRM_AB" -eq 0 ]; then
+  warn "ASSUME-BREACH box detected (dnp3.service): --fix REFUSED without --confirm-ab (report-only run)."
+  FIX=0
+fi
+if [ "$IS_AB" -eq 1 ] && [ "$FIXSSH" -eq 1 ] && [ "$CONFIRM_AB" -eq 0 ]; then
+  warn "ASSUME-BREACH box detected (dnp3.service): --fix-ssh REFUSED without --confirm-ab."
+  FIXSSH=0
+fi
+
+if [ "$FIX" -eq 1 ] || [ "$FIXSSH" -eq 1 ]; then
+  warn "FIX MODE: reversible fixes only, each logged to $CHANGELOG."
+  warn "Snapshot this VM via the Controller FIRST (revert limit 2/hour, fresh re-image = 75 pts)."
+  if [ "$(id -u)" -eq 0 ]; then
+    BK=/var/tmp/cf-etc-backup-$(date +%Y%m%d-%H%M%S).tgz
+    if tar czf "$BK" /etc 2>/dev/null; then
+      item "Pre-change backup: $BK"; logfix "backup /etc -> $BK"
+    else
+      warn "Backup FAILED - aborting ALL fixes (nothing will be changed)."
+      FIX=0; FIXSSH=0
+    fi
+  else
+    warn "Not root: cannot back up /etc - fixes disabled (re-run with sudo)."
+    FIX=0; FIXSSH=0
+  fi
+fi
+CF_PROTECTED='^(root|score1|score2|patch|historian|green-user|green-admin|openplc|modbus|dnp3)$'
+
 # ---------------- SYSTEM ----------------
 section "SYSTEM"
 item "Host: $(hostname)  IP(s): $(hostname -I 2>/dev/null | tr -s ' ' ',')"
@@ -66,6 +113,24 @@ section "ACCOUNTS"
 item "UID-0 accounts (expect only root):"
 awk -F: '($3==0){print "   "$1" (uid0)"}' /etc/passwd
 awk -F: '($2==""){print "   EMPTY PASSWORD: "$1}' /etc/shadow 2>/dev/null | while read -r l; do flag "$l"; done
+if [ "$FIX" -eq 1 ] && [ "$(id -u)" -eq 0 ]; then
+  # lock empty-password accounts (protected accounts NEVER locked - could break scoring)
+  awk -F: '($2==""){print $1}' /etc/shadow 2>/dev/null | while read -r u; do
+    if echo "$u" | grep -Eqi "$CF_PROTECTED"; then
+      warn "empty password on PROTECTED account $u - NOT locking (fix by hand with the team)"
+    else
+      passwd -l "$u" >/dev/null 2>&1 \
+        && { flag "FIXED: locked empty-password account $u (restore: sudo passwd -u $u)"; logfix "passwd -l $u (empty password)"; } \
+        || flag "FIX FAIL: could not lock $u"
+    fi
+  done
+  # lock UID-0 accounts other than root (root excluded by CF_PROTECTED)
+  awk -F: '$3==0{print $1}' /etc/passwd | while read -r u; do
+    echo "$u" | grep -Eqi "$CF_PROTECTED" && continue
+    passwd -l "$u" >/dev/null 2>&1 \
+      && { flag "FIXED: locked UID-0 account $u (restore: sudo passwd -u $u)"; logfix "passwd -l $u (UID 0 besides root)"; }
+  done
+fi
 item "Shell-capable users: $(awk -F: '($7!~/nologin|false/){printf "%s ", $1}' /etc/passwd)"
 item "sudoers (non-#):"
 grep -vE '^\s*#|^\s*$' /etc/sudoers 2>/dev/null | while read -r l; do
@@ -152,6 +217,32 @@ find / -xdev -perm -4000 -type f 2>/dev/null | while read -r b; do
 done
 item "World-writable /etc or /usr files:"
 find /etc /usr -xdev -type f -perm -002 2>/dev/null | head -10
+if [ "$FIX" -eq 1 ] && [ "$(id -u)" -eq 0 ]; then
+  # canonical modes for known-correct targets only - reversible, logged
+  fixmode() { # fixmode <path> <mode>
+    [ -e "$1" ] || return 0
+    cur=$(stat -c '%a' "$1" 2>/dev/null)
+    [ "$cur" = "$2" ] && return 0
+    chmod "$2" "$1" 2>/dev/null \
+      && { flag "FIXED: chmod $2 $1 (was $cur; restore: sudo chmod $cur $1)"; logfix "chmod $2 $1 (was $cur)"; } \
+      || flag "FIX FAIL: chmod $2 $1"
+  }
+  item "Canonical file modes (--fix):"
+  fixmode /etc/passwd 644
+  fixmode /etc/shadow 640
+  fixmode /etc/group 644
+  fixmode /etc/crontab 644
+  fixmode /etc/sudoers 440
+  for f in /etc/sudoers.d/*;       do [ -f "$f" ] && fixmode "$f" 440; done
+  for f in /etc/cron.d/*;          do [ -f "$f" ] && fixmode "$f" 644; done
+  for k in /etc/ssh/ssh_host_*_key; do [ -f "$k" ] && fixmode "$k" 600; done
+  for f in /root/.ssh/authorized_keys /home/*/.ssh/authorized_keys; do [ -f "$f" ] && fixmode "$f" 600; done
+  for d in /root/.ssh /home/*/.ssh; do [ -d "$d" ] && fixmode "$d" 700; done
+  # additive logging/audit posture - never removes anything
+  command -v ufw >/dev/null 2>&1 && { ufw logging low >/dev/null 2>&1 && logfix "ufw logging low"; }
+  command -v auditd >/dev/null 2>&1 && ! systemctl is-active auditd >/dev/null 2>&1 \
+    && { systemctl enable --now auditd >/dev/null 2>&1 && { flag "FIXED: auditd enabled"; logfix "systemctl enable --now auditd"; }; }
+fi
 echo "$PATH" | grep -qE '(^|:)\.(:|$)' && flag "PATH contains '.' (current dir)"
 
 # ---------------- SSHD POSTURE ----------------
@@ -164,6 +255,23 @@ if [ -f "$sshd_conf" ]; then
   done
   rp=$(grep -iE "^PermitRootLogin" "$sshd_conf" /etc/ssh/sshd_config.d/*.conf 2>/dev/null | tail -1 | awk '{print $2}')
   case "${rp:-yes}" in yes) flag "PermitRootLogin yes (rotate root creds or set to no)";; *) item "(root login restricted)";; esac
+fi
+if [ "$FIXSSH" -eq 1 ] && [ "$(id -u)" -eq 0 ]; then
+  drop=/etc/ssh/sshd_config.d/99-cf-hardening.conf
+  mkdir -p /etc/ssh/sshd_config.d
+  printf '%s\n' "PermitRootLogin no" "MaxAuthTries 3" "LoginGraceTime 30" "LogLevel VERBOSE" > "$drop"
+  if sshd -t 2>/dev/null; then
+    systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null
+    flag "FIXED: sshd hardened via $drop (PermitRootLogin no, MaxAuthTries 3, LoginGraceTime 30, LogLevel VERBOSE)"
+    item "   reloaded in place - your session was NOT dropped; scoring uses score1/score2, not root"
+    logfix "sshd hardened via $drop + reload"
+  else
+    rm -f "$drop"
+    flag "sshd hardening ROLLED BACK (sshd -t failed) - config untouched"
+    logfix "sshd hardening rolled back (sshd -t failed)"
+  fi
+elif [ "$FIXSSH" -eq 1 ]; then
+  warn "--fix-ssh needs root (sudo)."
 fi
 [ -f /etc/ssh/ssh_host_ed25519_key ] && warn "host key ed25519 present (pin its fingerprint day-1: ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub)"
 
