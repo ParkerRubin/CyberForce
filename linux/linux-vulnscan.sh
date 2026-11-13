@@ -86,12 +86,14 @@ for d in /etc/cron.d /etc/cron.daily /etc/cron.hourly /etc/cron.weekly /var/spoo
 done
 atq 2>/dev/null | grep . && warn "at jobs queued: $(atq | wc -l)" || item "at jobs: none"
 item "systemd units/timers with odd Exec paths:"
-find /etc/systemd/system /usr/lib/systemd/system -maxdepth 2 \( -name '*.service' -o -name '*.timer' \) 2>/dev/null |
+# Only /etc (custom units) are flagged - /usr/lib units are distro-owned.
+# Path patterns use slashes so "utmp" (systemd-update-utmp) never matches.
+find /etc/systemd/system -maxdepth 2 \( -name '*.service' -o -name '*.timer' \) 2>/dev/null |
 while read -r u; do
   execs=$(grep -hE '^(Exec|OnCalendar|OnBootSec|OnUnitActiveSec)' "$u" 2>/dev/null | tr '\n' ' | ')
   case "$u" in *dnp3*|*modbus*) marker="[ICS - DO NOT TOUCH]";; *) marker="";; esac
   case "$execs" in
-    *tmp*|*home*|*dev/shm*|*opt*|*srv*) flag "$marker $u :: $execs";;
+    *"/tmp/"*|*"/home/"*|*"/dev/shm"*|*"/opt/"*|*"/srv/"*) flag "$marker $u :: $execs";;
     *) [ -n "$marker" ] && item "$marker $u :: $execs";;
   esac
 done
@@ -174,7 +176,7 @@ done
 
 # ---------------- ICS SERVICES ----------------
 section "ICS SERVICES (do not restart/remove)"
-for s in dnp3 modbus ignition openplc; do
+for s in dnp3 modbus ignition openplc openplc-runtime openplc-proxy; do
   st=$(systemctl is-active "$s" 2>/dev/null)
   if [ "$st" = "active" ]; then
     item "$s.service: active"
