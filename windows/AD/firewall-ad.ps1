@@ -7,13 +7,16 @@ param(
 # You do NOT edit ports here - run the script and add any EXTRA service ports
 # at the prompt. The baseline is always applied on top of what you type.
 $EnableRDP = $true
-$RestrictRDP = $true
+# CyberForce rules of play: NO allow-lists, NO subnet/CIDR blocks. RDP opens
+# to ANY source (scoring and teammates can come from many IPs). If you need
+# to lock someone out, use SINGLE-IP BLOCK rules only (prompted below).
+$BlockRdpSingleIps = $true
 $LogFolder = "$env:SystemRoot\System32\LogFiles\Firewall"
 
 $KeepExistingInboundRules = $true
 
-# AD/DC baseline (open these or the domain falls over). 3389 is intentionally
-# NOT here - RDP is handled separately below so it stays source-restricted.
+# AD/DC baseline (open these or the domain falls over). 3389 is handled
+# separately below: allowed to ANY source, plus optional single-IP blocks.
 $BaselineTCP = @(53,88,135,139,389,445,464,636,3268,3269)
 $BaselineUDP = @(53,88,123,389,464)
 
@@ -65,37 +68,26 @@ Write-Host ""
 Write-Host "TCP allowed: $($AllowedInboundTCP -join ', ')" -ForegroundColor Green
 Write-Host "UDP allowed: $($AllowedInboundUDP -join ', ')" -ForegroundColor Green
 
-# ---- Interactive RDP source prompt ----
-$RdpAllowedRemoteAddresses = @()
-if ($EnableRDP -and $RestrictRDP) {
+# ---- Interactive single-IP BLOCK prompt (CyberForce: single-IP blocks ONLY) ----
+$RdpBlockedIps = @()
+if ($EnableRDP -and $BlockRdpSingleIps) {
   Write-Host ""
-  Write-Host "Enter allowed RDP source IP(s)/CIDR range(s), comma-separated." -ForegroundColor Cyan
-  Write-Host "Examples: 10.0.5.10  or  10.0.5.0/24,192.168.1.50" -ForegroundColor DarkGray
-  Write-Host "Leave blank to fall back to RFC1918 private ranges." -ForegroundColor DarkGray
-  $rdpInput = Read-Host "RDP allowed sources"
+  Write-Host "Enter individual attacker IPs to BLOCK from RDP, comma-separated (blank = none)." -ForegroundColor Cyan
+  Write-Host "SINGLE IPs only - CIDR/subnet entries are rejected by the competition rules." -ForegroundColor Yellow
+  Write-Host "Example: 10.0.186.77,10.0.186.99" -ForegroundColor DarkGray
+  $rdpInput = Read-Host "RDP block IPs"
 
-  if ([string]::IsNullOrWhiteSpace($rdpInput)) {
-    $RdpAllowedRemoteAddresses = @("10.0.0.0/8","172.16.0.0/12","192.168.0.0/16")
-    Write-Host "No input given, defaulting to RFC1918 ranges." -ForegroundColor Yellow
-  } else {
+  if (-not [string]::IsNullOrWhiteSpace($rdpInput)) {
     $candidates = $rdpInput -split "," | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" }
-    $ipOrCidrPattern = '^(\d{1,3}\.){3}\d{1,3}(/\d{1,2})?$'
-    $valid = @()
-    $invalid = @()
+    $ipPattern = '^(\d{1,3}\.){3}\d{1,3}$'   # plain IP only - no /CIDR suffix
     foreach ($c in $candidates) {
-      if ($c -match $ipOrCidrPattern) { $valid += $c } else { $invalid += $c }
-    }
-    if ($invalid.Count -gt 0) {
-      Write-Host "Ignoring invalid entries: $($invalid -join ', ')" -ForegroundColor Red
-    }
-    if ($valid.Count -eq 0) {
-      Write-Host "No valid entries parsed, defaulting to RFC1918 ranges." -ForegroundColor Yellow
-      $RdpAllowedRemoteAddresses = @("10.0.0.0/8","172.16.0.0/12","192.168.0.0/16")
-    } else {
-      $RdpAllowedRemoteAddresses = $valid
+      if ($c -match $ipPattern) { $RdpBlockedIps += $c }
+      else { Write-Host "Rejected (CIDR/subnet or invalid - single IPs only): $c" -ForegroundColor Red }
     }
   }
-  Write-Host "RDP will be restricted to: $($RdpAllowedRemoteAddresses -join ', ')" -ForegroundColor Green
+  if ($RdpBlockedIps.Count -gt 0) {
+    Write-Host "RDP will be BLOCKED for single IPs: $($RdpBlockedIps -join ', ')" -ForegroundColor Green
+  }
   Write-Host ""
 }
 
@@ -183,26 +175,31 @@ if ($EnableRpcDynamic) {
 }
 
 if ($EnableRDP) {
-  Write-Host "[6/7] RDP enabled: allowing TCP/3389"
-  if ($RestrictRDP -and $RdpAllowedRemoteAddresses.Count -gt 0) {
-    try {
-      New-NetFirewallRule `
-        -DisplayName "WRCCDC_RDP_3389_Restricted" `
-        -Direction Inbound -Action Allow -Enabled True `
-        -Protocol TCP -LocalPort 3389 `
-        -RemoteAddress $RdpAllowedRemoteAddresses `
-        -Profile Domain,Private,Public `
-        -EdgeTraversalPolicy Block | Out-Null
-    } catch {}
-  } else {
-    try {
-      New-NetFirewallRule `
-        -DisplayName "WRCCDC_RDP_3389" `
-        -Direction Inbound -Action Allow -Enabled True `
-        -Protocol TCP -LocalPort 3389 `
-        -Profile Domain,Private,Public `
-        -EdgeTraversalPolicy Block | Out-Null
-    } catch {}
+  Write-Host "[6/7] RDP enabled: allowing TCP/3389 to ANY source (no allow-lists per rules)"
+  try {
+    New-NetFirewallRule `
+      -DisplayName "WRCCDC_RDP_3389" `
+      -Direction Inbound -Action Allow -Enabled True `
+      -Protocol TCP -LocalPort 3389 `
+      -Profile Domain,Private,Public `
+      -EdgeTraversalPolicy Block | Out-Null
+  } catch {}
+  if ($RdpBlockedIps.Count -gt 0) {
+    # Single-IP blocks ONLY - competition rules forbid subnet/CIDR blocks.
+    $i = 0
+    foreach ($ip in $RdpBlockedIps) {
+      $i++
+      try {
+        New-NetFirewallRule `
+          -DisplayName "WRCCDC_RDP_Block_$ip" `
+          -Direction Inbound -Action Block -Enabled True `
+          -Protocol TCP -LocalPort 3389 `
+          -RemoteAddress $ip `
+          -Profile Domain,Private,Public `
+          -EdgeTraversalPolicy Block | Out-Null
+        Write-Host "      block rule added: $ip"
+      } catch {}
+    }
   }
 } else {
   Write-Host "[6/7] RDP not allowed: blocking TCP/3389 (firewall only)"

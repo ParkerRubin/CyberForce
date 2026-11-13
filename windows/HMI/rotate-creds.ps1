@@ -18,7 +18,9 @@ $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIden
   [Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $isAdmin) { Write-Host "ERROR: Run PowerShell as Administrator." -ForegroundColor Red; exit 1 }
 
-$Protected = @('SCORE1','SCORE2','PATCH')
+# Protected per CyberForce rules: scoring accounts + Green Team WP accounts.
+# -contains is case-insensitive, so SCORE1 also blocks score1/score1$, etc.
+$Protected = @('SCORE1','SCORE2','PATCH','green-user','green-admin','historian')
 $Dir = "C:\CF-Toolkit\Creds"
 $TS  = Get-Date -Format "yyyyMMdd-HHmmss"
 New-Item -ItemType Directory -Force -Path $Dir | Out-Null

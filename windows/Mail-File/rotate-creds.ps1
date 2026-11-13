@@ -17,7 +17,9 @@ $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIden
   [Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $isAdmin) { Write-Host "ERROR: Run PowerShell as Administrator." -ForegroundColor Red; exit 1 }
 
-$Protected = @('SCORE1','SCORE2','PATCH')          # NEVER rotate these
+# NEVER rotate these - scoring accounts + Green Team + historian.
+# -contains is case-insensitive, so SCORE1 also blocks score1/score1$, etc.
+$Protected = @('SCORE1','SCORE2','PATCH','green-user','green-admin','historian')
 $Dir = "C:\CF-Toolkit\Creds"
 $TS  = Get-Date -Format "yyyyMMdd-HHmmss"
 New-Item -ItemType Directory -Force -Path $Dir | Out-Null

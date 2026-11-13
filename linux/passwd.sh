@@ -8,7 +8,9 @@
 # Output is saved like rotate-creds.sh:
 #   timestamped credfile in $HOME (root's home), chmod 600.
 #
-# NEVER touch: SCORE1, SCORE2, PATCH, historian, root, openplc
+# NEVER touch: score1, score2, patch, historian, green-user, green-admin,
+# root, openplc, modbus, dnp3 (scoring/Green Team/ICS service accounts).
+# Match is CASE-INSENSITIVE on purpose - Linux accounts are usually lowercase.
 # Override with: PROTECTED='...' sudo bash passwd.sh
 # ============================================================
 set -eu
@@ -18,7 +20,7 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
-PROTECTED="${PROTECTED:-SCORE1|SCORE2|PATCH|historian|root|openplc}"
+PROTECTED="${PROTECTED:-score1|score2|patch|historian|green-user|green-admin|root|openplc|modbus|dnp3}"
 TS=$(date +%Y%m%d-%H%M%S)
 CREDFILE="$HOME/passwd-creds-$TS.txt"
 touch "$CREDFILE" && chmod 600 "$CREDFILE"
@@ -76,7 +78,7 @@ log "USER,PASSWORD"
 # Loop through users with a login shell, skipping protected accounts
 skipped=""
 for u in $(getent passwd | awk -F: '$7 ~ /(bash|sh|zsh)$/ {print $1}'); do
-  if echo "$u" | grep -Eq "^($PROTECTED)$"; then
+  if echo "$u" | grep -Eqi "^($PROTECTED)$"; then
     skipped="$skipped $u"
     continue
   fi

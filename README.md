@@ -34,13 +34,18 @@ Red 2500 (AB attack-chain reporting 1000 + external pentest 1500) · Blue 2500 (
 ### Rules that constrain scripts
 
 1. **NO allow-lists, NO subnet/CIDR blocks** — block individual IPs only. Blocked-IP mistakes lose points (any blocked IP may be a scorer).
-2. **Never modify SCORE1 / SCORE2 / PATCH** (scoring SSH/RDP accounts).
-3. Assume-breach boxes: monitor at your own risk; no IP blocking there; anything that breaks Red access or scoring costs Red points.
+2. **Never modify SCORE1 / SCORE2 / PATCH** (scoring SSH/RDP accounts) — no password changes, lockouts, deletes, or group changes.
+3. **Never modify green-user / green-admin** (Green Team accounts on the WordPress site — keep them working).
+4. **Never rotate the `historian` MySQL account on the HMI** (`historian/CyberForce2026!`) — Ignition and scoring depend on it.
+5. **Never stop or remove modbus.service, dnp3.service, or OpenPLC** (PLC1/PLC2 ICS services).
+6. **No hostname or IP changes** on any machine.
+7. Assume-breach boxes: monitor at your own risk; no IP blocking there; anything that breaks Red access or scoring costs Red points.
+8. Keep ONE shared, up-to-date team password list — record every new password BEFORE changing it.
 4. VM naming: restored snapshots keep the identical name — **150 pts/vm misnamed**.
 5. Snapshot revert limit 2/VM/hour; fresh re-image **75 pts/box** (snapshot early + often via Controller).
 6. >2 password-reset ticket requests = 50 pts each; DMing staff = 10 pts each (use #ticket-system).
 7. Free/open-source software only. **No AI tools** for anomaly resolution or defense.
-8. Every infra change -> Security Documentation (template in comp repo).
+11. Every infra change -> Security Documentation (template in comp repo).
 
 ---
 

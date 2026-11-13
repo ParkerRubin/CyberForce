@@ -32,8 +32,9 @@ Only inbound traffic allowed:
 
 - Existing Windows/service allow rules
 - Ports explicitly listed in AllowedInboundTCP/UDP
-- RDP rule, restricted to the IP(s)/CIDR range(s) entered at runtime
-  (falls back to RFC1918 private ranges if left blank)
+- RDP rule, allowed to ANY source (CyberForce rules: no allow-lists).
+  Optional SINGLE-IP blocks for known attacker IPs can be entered at
+  runtime; CIDR/subnet entries are rejected.
 
 This prevents:
 
@@ -41,7 +42,7 @@ This prevents:
 - Many lateral movement techniques
 - Remote exploitation of non-required services
 - Unauthorized inbound connections
-- RDP access from sources outside the range you specify at runtime
+- RDP access stays open (scoring and teammates connect from many IPs)
 
 --------------------------------------------------
 
@@ -92,17 +93,14 @@ Before running: know these two things
      service) before filling in the array — a wrong-protocol entry
      creates a rule that does nothing and gives no error.
 
-2) Your team's actual RDP source range
-   - Usually your VPN-assigned subnet on the comp network, not your
-     home IP or a broad guess.
+2) Single-IP block list for known attacker IPs
+   - CyberForce rules: single-IP blocks ONLY. No CIDR/subnet blocks
+     and no allow-lists - those forfeit points and break scoring.
    - Entered at runtime when the script prompts:
-         "RDP allowed sources"
-   - Accepts comma-separated IPs and/or CIDR ranges
-     (e.g. 10.0.5.10,192.168.1.0/24)
-   - Invalid entries are dropped and reported; leaving it blank
-     falls back to RFC1918 ranges (10.0.0.0/8, 172.16.0.0/12,
-     192.168.0.0/16) as a default, which is broader than a single
-     known-good range.
+         "RDP block IPs"
+   - Accepts comma-separated plain IPs (e.g. 10.0.186.77,10.0.186.99)
+   - CIDR/subnet entries are rejected with an error; nothing falls
+     back to a broad range.
 
 --------------------------------------------------
 

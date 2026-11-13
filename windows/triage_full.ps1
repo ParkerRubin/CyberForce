@@ -271,6 +271,10 @@ Write-Section -Path $SummaryPath -Title "Enabled local users (quick view)" -Line
 # non-Microsoft scheduled tasks. It does not isolate the network, kill
 # processes, or lock accounts. Treat it as a single containment step,
 # not full incident containment.
+# CyberForce guard: NEVER disable tasks belonging to scoring or ICS
+# services (score*, patch, green-*, historian, modbus, dnp3, openplc,
+# ignition) - doing so stops the scoreboard and loses points.
+$DoNotTouchTaskPattern = '(?i)(score1|score2|patch|green[-_]?user|green[-_]?admin|historian|modbus|dnp3|openplc|ignition)'
 if ($ContainmentMode) {
   Add-Content -Path $SummaryPath -Value ""
   Add-Content -Path $SummaryPath -Value "==== CONTAINMENT ACTIONS TAKEN: disable non-Microsoft running scheduled tasks ===="
@@ -279,6 +283,10 @@ if ($ContainmentMode) {
     $nonMsRunning = Get-ScheduledTask -ErrorAction Stop | Where-Object { $_.TaskPath -notlike "\Microsoft\*" -and $_.State -eq "Running" }
     foreach ($t in $nonMsRunning) {
       $full = "$($t.TaskPath)$($t.TaskName)"
+      if ($full -match $DoNotTouchTaskPattern) {
+        Add-Content -Path $SummaryPath -Value "SKIPPED (protected - scoring/ICS): $full"
+        continue
+      }
       Add-Content -Path $SummaryPath -Value "Disabling scheduled task: $full"
       Disable-ScheduledTask -TaskName $t.TaskName -TaskPath $t.TaskPath -ErrorAction Stop | Out-Null
     }
