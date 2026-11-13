@@ -13,8 +13,9 @@
 # NEVER touches: score1/score2/patch, green-*, historian, root,
 # openplc/modbus/dnp3 services, hostnames/IPs. Every action is
 # logged to /var/log/cf-changes.log (feed into Security Docs).
-# REVERTS ARE METERED (2/hour, re-image = 75 pts) -> snapshot via
-# Controller BEFORE and AFTER this script.
+# NOTE: PRE-COMP the Controller may not offer snapshots yet - if so,
+# the ONLY rollback is this script's local backups (/etc tar + deep
+# backup of /home, webroots, MySQL dumps). Take them seriously.
 #
 # Usage:  sudo bash precomp-hardening.sh [--yes] [--confirm-ab]
 #         sudo bash precomp-hardening.sh --comp-day
@@ -64,10 +65,16 @@ fi
 
 echo
 echo "=== CYBERFORCE PRE-COMP HARDENING — $(hostname) ==="
-warn "Snapshot this VM via Controller FIRST (revert 2/hour, re-image = 75 pts)."
+warn "Pre-comp the Controller may NOT offer snapshots - check Manage AWS Instances."
+warn "If snapshots are unavailable, local backups below are your ONLY rollback."
 warn "All changes below must be mirrored into Security Documentation."
 if [ "$YES" -eq 0 ]; then
-  read -rp "Snapshot done / acknowledge? Type HARDEN to proceed: " a
+  read -rp "Can you take a Controller snapshot right now? [y/N] " snap
+  case "${snap:-}" in
+    y|Y) logfix "Controller snapshot available/confirmed";;
+    *)   warn "NO snapshot = no remote rollback. The deep local backup is mandatory next."; logfix "no Controller snapshot available pre-comp";;
+  esac
+  read -rp "Proceed with hardening anyway? Type HARDEN: " a
   [ "$a" = "HARDEN" ] || { echo "Aborted."; exit 1; }
 else
   logfix "precomp-hardening started with --yes (no typed confirmation)"
@@ -77,6 +84,23 @@ TS=$(date +%Y%m%d-%H%M%S)
 BK=/var/tmp/cf-etc-backup-$TS.tgz
 tar czf "$BK" /etc 2>/dev/null && { doneok "Pre-change backup: $BK"; logfix "backup /etc -> $BK"; } \
   || { flag "Backup FAILED - aborting."; exit 1; }
+
+# ---- deep local backup (the real rollback when snapshots don't exist) ----
+DB=/var/tmp/cf-deep-backup-$TS
+mkdir -p "$DB"
+hdr "DEEP LOCAL BACKUP -> $DB (homes, webroots, MySQL dumps)"
+tar czf "$DB/homes.tgz" /home 2>/dev/null && doneok "homes.tgz" || warn "homes tar had warnings (fine)"
+tar czf "$DB/webroot.tgz" /srv/www /var/www 2>/dev/null && doneok "webroot.tgz" \
+  || warn "no webroot found at /srv/www or /var/www (fine on non-Task boxes)"
+if command -v mysqldump >/dev/null 2>&1; then
+  mysqldump --all-databases 2>/dev/null | gzip > "$DB/mysql-all.tgz" \
+    && doneok "mysql-all.tgz (ALL databases dumped)" \
+    || warn "mysqldump failed (auth?) - dump by hand: mysqldump --all-databases | gzip > dump.tgz"
+else
+  item "mysqldump not present - skipped"
+fi
+logfix "deep local backup -> $DB (homes/webroot/mysql)"
+doneok "Rollback without snapshots = untar these + restore DBs. Keep them until comp snapshots work."
 
 ask() { # ask "label" -> runs only if YES or user says y
   [ "$YES" -eq 1 ] && return 0
@@ -241,6 +265,8 @@ done
 
 echo
 echo "=============== PRECOMP DONE ==============="
-warn "Verify scored ports are green, SNAPSHOT AGAIN via Controller, then copy"
-warn "$CHANGELOG lines into Security Documentation (required by rules)."
+warn "Verify scored ports are green, copy $CHANGELOG lines into Security"
+warn "Documentation (required by rules)."
+warn "Keep /var/tmp/cf-etc-backup-$TS.tgz and $DB until Controller snapshots exist;"
+warn "take Controller snapshots as soon as they become available (revert 2/hour)."
 exit 0
