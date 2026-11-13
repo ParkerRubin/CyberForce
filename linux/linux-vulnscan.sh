@@ -82,7 +82,7 @@ fi
 
 if [ "$FIX" -eq 1 ] || [ "$FIXSSH" -eq 1 ]; then
   warn "FIX MODE: reversible fixes only, each logged to $CHANGELOG."
-  warn "Controller snapshot if available (pre-comp it may not be; the /etc backup below is the rollback)."
+  warn "A snapshot of this VM must exist first (team snapshots; revert limit 2/hour)."
   if [ "$(id -u)" -eq 0 ]; then
     BK=/var/tmp/cf-etc-backup-$(date +%Y%m%d-%H%M%S).tgz
     if tar czf "$BK" /etc 2>/dev/null; then

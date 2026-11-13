@@ -88,7 +88,7 @@ CyberForce\
 - Default output = **one short console report per run** for hand-triage; files only where an explicit flag (`--save` / `-Save`) asks.
 - winpeas/linpeas/nuclei are for the **deep/odd spots** (persistence, privesc, web edges) — the quick truths come from netstat/tasklist style one-liners in cmd-cheatsheet.md and the vulnscan scripts' console output.
 
-Run order per box on Nov 2 (AWS access day): `rotate-creds` -> `firewall(-tuned)` -> `precomp-hardening` -> `snapshot` -> `wininfo`/`linuxinfo`; then repeat snapshot on an interval and watch dnp3/modbus/Ignition/MySQL. **Pre-comp note: Controller snapshots may not be available yet — `precomp-hardening.sh` makes local backups (/etc tar + homes/webroot/MySQL dumps in /var/tmp) that are your only rollback until snapshots work; take Controller snapshots the moment they appear.**
+Run order per box on Nov 2 (AWS access day): `rotate-creds` -> `firewall(-tuned)` -> `precomp-hardening` -> `snapshot` -> `wininfo`/`linuxinfo`; then repeat snapshot on an interval and watch dnp3/modbus/Ignition/MySQL. **Snapshots are taken by the team (initial snapshot already exists) — confirm one exists before every hardening/fix run, and take a fresh one after, so the next revert lands on the post-change state.**
 
 ### Generic firewall notes
 - Machine folders hold the only firewall you run in normal flow (`firewall-tuned.*`); nothing there prompts for source-address restrictions (banned this year); RDP 3389 goes in unrestricted.
