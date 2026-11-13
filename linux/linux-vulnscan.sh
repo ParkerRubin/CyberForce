@@ -297,6 +297,18 @@ grep -rn 'historian\|blueuser\|blueteam' /etc/mysql/ 2>/dev/null | head -4 | cut
 section "LISTENERS (ss -tulpn)"
 ss -tulpn 2>/dev/null | grep LISTEN | while read -r l; do item "$l"; done
 warn "Cross-check against REQUIRED-PORTS.md - anything else is a backdoor candidate."
+# name every listener process (report-only - NEVER killed by this script)
+if [ "$(id -u)" -eq 0 ]; then
+  item "Listener process details:"
+  ss -tlnp 2>/dev/null | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -un | while read -r p; do
+    cmd=$(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null | cut -c1-110)
+    cwd=$(readlink "/proc/$p/cwd" 2>/dev/null)
+    item "   pid=$p cwd=${cwd:-?} cmd=${cmd:-?}"
+  done
+  warn "openplc-proxy (nginx) owns 8443/18080/18443-style ports on PLC1 - part of the ICS stack, do not touch."
+else
+  warn "Run with sudo to see listener process names."
+fi
 
 # established OUTBOUND (possible C2)
 item "Established outbound connections:"

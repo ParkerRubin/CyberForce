@@ -66,6 +66,7 @@ CyberForce\
   linux\                         <- generic Linux toolkit (push to Task / PLC1 / PLC2)
     linux-vulnscan.sh            linpeas-style console report: accounts/persistence/SUID/sshd/creds/listeners/ICS services (--save = one file; --fix = safe auto-remediation; --fix-ssh = sshd hardening; AB boxes need --confirm-ab)
     install-tools.sh             distro-detect (apt/zypper): nmap, tcpdump, gpg, sshpass + stages linpeas.sh into ~/cf-tools
+    precomp-hardening.sh         PRE-COMP window only (Nov 2-13): updates, junk-service/old.* cleanup, listener ID, optional fail2ban, scored-port self-check (--comp-day = disable fail2ban before scoring starts)
     linuxinfo.sh                 inventory, --save writes Inventory_<host>_<ts>/inventory.txt
     readme.md                    manual hardening notes (passwd, rc customization, ufw, threat hunt)
     Task\                        rotate-creds.sh | firewall-tuned.sh | REQUIRED-PORTS.md
