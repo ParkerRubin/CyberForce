@@ -401,6 +401,37 @@ if [ -n "$MYSQL" ]; then
     || warn "mysql ping failed (root creds — check manually)"
 fi
 
+# --- required services matrix (comp table) ---------------------------------
+# openSUSE Leap box: HTTP 80, MySQL 3306, SMB 139/445 MUST be up (scored)
+# Ubuntu 24.04 box:  OpenPLC UI 8080 + Modbus 502 MUST be up (scored)
+OS_ID=$(awk -F= '$1=="ID"{gsub(/"/,"",$2);print $2}' /etc/os-release 2>/dev/null)
+IS_SUSE=false; IS_PLC=false
+command -v zypper >/dev/null 2>&1 && IS_SUSE=true
+ss -tln 2>/dev/null | grep -q ':502 ' && IS_PLC=true
+if $IS_SUSE; then
+  for p in 80 3306 139 445; do
+    ss -tln | grep -q ":$p " && ok "required port $p up (openSUSE matrix)" \
+      || crit "REQUIRED port $p DOWN (openSUSE matrix: HTTP/MySQL/SMB)"
+  done
+  systemctl is-active apache2 >/dev/null 2>&1 && ok "apache2 active" || crit "apache2 not active"
+  { systemctl is-active smb >/dev/null 2>&1 || systemctl is-active samba >/dev/null 2>&1; } \
+    && ok "smb service active" || crit "smb service not active"
+  { systemctl is-active mysql84 >/dev/null 2>&1 || systemctl is-active mysql >/dev/null 2>&1 || systemctl is-active mysqld >/dev/null 2>&1; } \
+    && ok "mysql service active" || crit "mysql service not active"
+fi
+if $IS_PLC; then
+  ss -tln | grep -q ':502 ' && ok "modbus 502 listening" || crit "REQUIRED Modbus 502 DOWN (uptime lane)"
+  ss -tln | grep -q ':8080 ' && ok "OpenPLC UI 8080 up" || crit "REQUIRED OpenPLC UI 8080 DOWN (restore: web UI -> Start PLC, NOT systemd)"
+  systemctl is-active modbus >/dev/null 2>&1 && ok "modbus.service active" || warn "modbus.service not 'active' (rules: never disable — verify state)"
+  systemctl is-active openplc >/dev/null 2>&1 && ok "openplc.service active" || warn "openplc.service not 'active' (rules: never disable — verify state)"
+  if command -v ufw >/dev/null; then
+    ufw status 2>/dev/null | grep -q 'Status: active' && ok "ufw active" || warn "ufw INACTIVE (PLC1 firewall step owed — snapshot FIRST)"
+  fi
+  LC=$(curl -s -o /dev/null -w '%{http_code}' -m 5 -d 'username=openplc&password=openplc' http://127.0.0.1:8080/login 2>/dev/null)
+  case "$LC" in 302|303) crit "OpenPLC DEFAULT CREDS still valid (openplc/openplc)";; "") ;; *) ok "OpenPLC default creds rejected/changed ($LC)";; esac
+fi
+[ "$OS_ID" = "debian" ] && info "Debian box (PLC2?) — assume-breach: monitor/document only, no fixes"
+
 # apache config + live probes
 grep -rhsE '^\s*ServerTokens' /etc/apache2 2>/dev/null | grep -v '#' | grep -q Prod \
   && ok "ServerTokens Prod" || warn "ServerTokens not Prod (version banner leak — SecDoc row)"
