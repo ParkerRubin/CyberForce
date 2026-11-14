@@ -86,7 +86,11 @@ grep -rh "NOPASSWD" /etc/sudoers.d/ 2>/dev/null | grep -vq '^#' \
   && warn "NOPASSWD lines in sudoers.d — confirm each is yours" || ok "no stray NOPASSWD"
 grep -E '^\s*(@|#)?include' /etc/sudoers 2>/dev/null | grep -v sudoers.d \
   && warn "non-standard include in /etc/sudoers" || ok "no odd sudoers includes"
-visudo -c >/dev/null 2>&1 || crit "SUDOERS SYNTAX BROKEN"
+if [ "$(id -u)" -eq 0 ]; then
+  visudo -c >/dev/null 2>&1 || crit "SUDOERS SYNTAX BROKEN (visudo -c to find file/line)"
+else
+  warn "sudoers syntax not checked (needs root)"
+fi
 
 # --- 4. hidden/system-path executables + PATH hijack ----------
 hdr "system binaries"
@@ -198,7 +202,8 @@ WW=$(find /srv/www/vhosts /var/www/html -type f -perm /022 2>/dev/null | head -4
 [ -n "$WW" ] && crit "world/group-WRITABLE web files: $(echo $WW ...)" || ok "webroot not writable"
 basediff webroot-files "find /srv/www/vhosts /var/www/html -type f 2>/dev/null"
 info "^ new file appearing in webroot = likely webshell drop"
-UP=$(find /srv/www/vhosts -path '*uploads*' -name '*.php' 2>/dev/null)
+UP=$(find /srv/www/vhosts /var/www/html -type f -path '*/uploads/*' -name '*.php' 2>/dev/null | head -5)
+# (real uploads dirs only — a plugin file merely NAMED uploads.php is not this class)
 [ -n "$UP" ] && crit "PHP inside uploads dir (classic webshell spot): $(echo $UP)" || ok "no php in uploads"
 find /srv/www /var/www -name 'info.php' 2>/dev/null | grep -q . && warn "phpinfo present" || ok "no phpinfo"
 [ -r /srv/www/vhosts/wordpress/wp-config.php ] \
@@ -237,7 +242,8 @@ TMPX=$(find /tmp /dev/shm /var/tmp -type f -perm /111 2>/dev/null | grep -v 'per
 # --- 18. immutable implants ------------------------------------
 hdr "immutable flags"
 for d in /etc/sudoers.d /usr/local/sbin /usr/local/bin /etc/systemd/system; do
-  IM=$(lsattr -R "$d" 2>/dev/null | awk '$1 ~ /[ia]/ {print $NF}' | head -3)
+  # directories always "look" flagged to lsattr — check regular files only
+  IM=$(find "$d" -type f 2>/dev/null | head -3000 | xargs -r lsattr -d 2>/dev/null | awk '$1 ~ /[ia]/ {print $NF}' | head -3)
   [ -n "$IM" ] && warn "immutable/append files in $d: $(echo $IM)" || ok "$d clean"
 done
 
@@ -368,7 +374,7 @@ else warn "wordpress not at $WPD — adjust WPD path or skip this section"; fi
 # --- 27. hosts / php-loader / keys / history secrets (v3.2) -------
 hdr "hosts, php-loader, keys, history (v3.2)"
 basediff hosts-file "cat /etc/hosts 2>/dev/null"
-AP=$(grep -rhsE '^\s*(auto_prepend_file|auto_append_file)' /etc/php*/*/php.ini /etc/php*/*/conf.d/*.ini "$WPD/.htaccess" /etc/apache2/*.conf /etc/apache2/conf.d/*.conf 2>/dev/null | head -3)
+AP=$(grep -rhsE '^\s*(auto_prepend_file|auto_append_file)\s*=\s*[^;[:space:]]' /etc/php*/*/php.ini /etc/php*/*/conf.d/*.ini "$WPD/.htaccess" /etc/apache2/*.conf /etc/apache2/conf.d/*.conf 2>/dev/null | head -3)
 [ -n "$AP" ] && crit "php auto_prepend/append_file set (hidden code loader): $(echo $AP)" || ok "no php auto-prepend"
 PK=$(find /root /home /srv /tmp /opt -xdev \( -name 'id_rsa' -o -name 'id_ed25519' -o -name '*.pem' -o -name '*.key' \) -type f 2>/dev/null | grep -v '/evidence' | head -5)
 [ -n "$PK" ] && warn "stray private keys (SecDoc privatekeys row): $(echo $PK)" || ok "no stray private keys"
