@@ -1,5 +1,14 @@
 ﻿# CyberForce 2026 Toolkit
 
+
+ ░▒▓██████▓▒░░▒▓█▓▒░░▒▓█▓▒░░▒▓██████▓▒░
+░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░
+░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░
+░▒▓█▓▒░░▒▓█▓▒░░▒▓██████▓▒░░▒▓█▓▒░░▒▓█▓▒░
+░▒▓█▓▒░░▒▓█▓▒░  ░▒▓█▓▒░   ░▒▓█▓▒░░▒▓█▓▒░
+░▒▓█▓▒░░▒▓█▓▒░  ░▒▓█▓▒░   ░▒▓█▓▒░░▒▓█▓▒░
+ ░▒▓██████▓▒░   ░▒▓█▓▒░    ░▒▓██████▓▒░
+ 
 Blue Team scripts for the **DOE CyberForce Competition — November 13–14, 2026, Tinley Park Convention Center (Chicagoland)**.
 Scenario: operations team for **Vulcana Dynamics Ltd. (VDL)**, the sole geothermal power utility of the Kaldera Archipelago. Opened with an unexplained **2:36 grid outage**; the **Island Defense Radar Network** depends on your grid staying up.
 
