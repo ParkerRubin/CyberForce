@@ -358,19 +358,28 @@ if [ -d "$WPD/wp-content" ]; then
   [ -n "$REQ" ] && crit "wp-config loads a non-core file (backdoor loader pattern): $(echo $REQ)" || ok "wp-config requires clean"
   basediff htaccess-hash "md5sum $WPD/.htaccess 2>/dev/null | awk '{print \$1}'"
   # WP users: admin inventory + green accounts MUST stay admin (rules-protected)
+  # auth uses the WP DB creds from wp-config.php (no mysql root password needed)
   if [ -n "$MYSQL" ]; then
+    DBU=$(grep -oP "define\(\s*'DB_USER',\s*'\K[^']+" "$WPD/wp-config.php" 2>/dev/null | head -1)
+    DBP=$(grep -oP "define\(\s*'DB_PASSWORD',\s*'\K[^']+" "$WPD/wp-config.php" 2>/dev/null | head -1)
     DB=$(grep -oP "define\(\s*'DB_NAME',\s*'\K[^']+" "$WPD/wp-config.php" 2>/dev/null | head -1)
-    PFX=$(grep -oP '\$table_prefix\s*=\s*"\K[^"]+' "$WPD/wp-config.php" 2>/dev/null | head -1)
+    PFX=$(sed -n "s/.*\$table_prefix\s*=\s*['\"]\([^'\"]*\).*/\1/p" "$WPD/wp-config.php" 2>/dev/null | head -1)
     PFX=${PFX:-wp_}
-    if [ -n "$DB" ]; then
-      ADMINS=$("$MYSQL" -N -D "$DB" -e "SELECT u.user_login FROM ${PFX}users u JOIN ${PFX}usermeta m ON u.ID=m.user_id WHERE m.meta_key='${PFX}capabilities' AND m.meta_value LIKE '%administrator%'" 2>/dev/null)
-      [ -n "$ADMINS" ] && info "WP admins: $(echo $ADMINS | tr '\n' ' ')" || warn "could not list WP admins (DB name/prefix?)"
+    if [ -n "$DB" ] && [ -n "$DBU" ]; then
+      export MYSQL_PWD="$DBP"
+      ADMINS=$("$MYSQL" -N -u "$DBU" -h127.0.0.1 -D "$DB" -e "SELECT u.user_login FROM ${PFX}users u JOIN ${PFX}usermeta m ON u.ID=m.user_id WHERE m.meta_key='${PFX}capabilities' AND m.meta_value LIKE '%administrator%'" 2>/dev/null)
+      unset MYSQL_PWD
+      [ -n "$ADMINS" ] && info "WP admins: $(echo $ADMINS | tr '\n' ' ')" || warn "could not list WP admins (creds/DB/prefix — check wp-config defines)"
       echo "$ADMINS" | grep -q 'green-user' && ok "green-user is admin (rules-protected account alive)" \
         || warn "green-user NOT in admin list — restore BEFORE green survey"
       echo "$ADMINS" | grep -q 'green-admin' && ok "green-admin alive" \
         || warn "green-admin NOT in admin list — restore BEFORE green survey"
-      basediff wp-users "mysql -N -D \"$DB\" -e 'SELECT user_login FROM ${PFX}users' 2>/dev/null"
+      export MYSQL_PWD="$DBP"
+      basediff wp-users "\"$MYSQL\" -N -u \"$DBU\" -h127.0.0.1 -D \"$DB\" -e 'SELECT user_login FROM ${PFX}users' 2>/dev/null"
+      unset MYSQL_PWD
       info "^ new WP user = seeded account (census class #2)"
+    else
+      warn "wp-config missing DB_NAME/DB_USER defines — WP checks skipped"
     fi
   fi
 else warn "wordpress not at $WPD — adjust WPD path or skip this section"; fi
