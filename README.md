@@ -7,7 +7,7 @@ Official docs: https://github.com/CyberForceCompetition/2026_CyberForce_Competit
 
 ---
 
-## Environment (7 VMs, AWS VPC `10.0.186.0/27`, OpenVPN access)
+## Environment (7 VMs, AWS VPC `10.0.186.0/24`, OpenVPN access)
 
 ### Traditional infrastructure — full hardening allowed
 
