@@ -385,6 +385,76 @@ PK=$(find /root /home /srv /tmp /opt -xdev \( -name 'id_rsa' -o -name 'id_ed2551
 HS=$(grep -hiE 'password|passwd|secret|token|bearer|api[_-]?key' /root/.bash_history /home/*/.bash_history 2>/dev/null | grep -viE '^\s*#|^history' | head -4)
 [ -n "$HS" ] && warn "possible secrets in shell history — scrub these lines: $(echo $HS | head -3)" || ok "shell history clean of secret-looking lines"
 
+# --- 28. service vuln probes (v3.5) --------------------------------
+hdr "service vuln probes (v3.5)"
+# uptime sanity FIRST: the three scored services must answer
+if command -v curl >/dev/null; then
+  curl -sI -m 5 http://127.0.0.1/ | head -1 | grep -qE 'HTTP/1.[01] [123]' \
+    && ok "apache answering on 80" || crit "apache NOT answering on 80 (uptime lane!)"
+fi
+if command -v smbclient >/dev/null; then
+  smbclient -L //127.0.0.1/ -N >/dev/null 2>&1 && ok "smb answers (anon list worked — see guest WARN)" \
+    || ok "smb anon-list refused (fine if guest is off)"
+fi
+if [ -n "$MYSQL" ]; then
+  "$MYSQL" -h127.0.0.1 -N -e 'SELECT 1' >/dev/null 2>&1 && ok "mysql answering on 3306" \
+    || warn "mysql ping failed (root creds — check manually)"
+fi
+
+# apache config + live probes
+grep -rhsE '^\s*ServerTokens' /etc/apache2 2>/dev/null | grep -v '#' | grep -q Prod \
+  && ok "ServerTokens Prod" || warn "ServerTokens not Prod (version banner leak — SecDoc row)"
+T=$(curl -s -o /dev/null -w '%{http_code}' -m 5 -X TRACE http://127.0.0.1/ 2>/dev/null)
+case "$T" in 405|403|000) ok "TRACE rejected ($T)";; "") ;; *) warn "TRACE returned $T (XST class — set 'TraceEnable off')";; esac
+curl -s -m 5 http://127.0.0.1/wp-content/uploads/ 2>/dev/null | grep -qi 'index of' \
+  && crit "directory listing ON for /wp-content/uploads/" || ok "no directory listing on uploads"
+GIT=$(find /srv/www/vhosts /var/www/html -xdev \( -name .git -o -name .svn \) 2>/dev/null | head -3)
+[ -n "$GIT" ] && crit "VCS metadata exposed in webroot: $(echo $GIT)" || ok "no .git/.svn in webroot"
+X=$(curl -s -o /dev/null -w '%{http_code}' -m 5 http://127.0.0.1/xmlrpc.php 2>/dev/null)
+case "$X" in 405|403|000) ok "xmlrpc blocked ($X)";; "") ;; *) warn "xmlrpc answers $X (brute/SSRF class — deny in .htaccess + SecDoc row)";; esac
+if command -v curl >/dev/null; then
+  U=$(curl -s -m 5 "http://127.0.0.1/?rest_route=/wp/v2/users" 2>/dev/null | grep -c '"slug"')
+  if [ "${U:-0}" -gt 0 ] 2>/dev/null; then
+    warn "REST API leaks $U usernames (enumeration class — document or filter)"
+  else ok "no REST user enumeration"; fi
+fi
+
+# samba config
+TP=$(testparm -s 2>&1 >/dev/null)
+echo "$TP" | grep -qiE 'error|failed' && crit "smb.conf parse problem: $(echo $TP | head -1)" || ok "smb.conf parses clean"
+HA=$(grep -rhsE '^\s*(hosts allow|hosts deny)' /etc/samba/smb.conf 2>/dev/null | head -2)
+[ -n "$HA" ] && warn "smb hosts allow/deny present — verify it cannot block the SCORER: $(echo $HA)" || ok "no smb hosts allow/deny"
+
+# sshd posture (root-only detail)
+if [ "$(id -u)" -eq 0 ] && command -v sshd >/dev/null; then
+  T2=$(sshd -T 2>/dev/null)
+  echo "$T2" | grep -qi 'permitrootlogin no' || warn "PermitRootLogin not 'no' (SecDoc row)"
+  MA=$(echo "$T2" | awk 'tolower($1)=="maxauthtries"{print $2}')
+  if [ -n "$MA" ] && [ "$MA" -gt 6 ] 2>/dev/null; then warn "MaxAuthTries=$MA (brute-force friendly)"; else ok "MaxAuthTries sane (${MA:-?})"; fi
+  echo "$T2" | grep -qi 'allowagentforwarding no' || warn "AllowAgentForwarding on (agent-hijack class)"
+fi
+
+# postfix open-relay posture
+if command -v postconf >/dev/null; then
+  MN=$(postconf -h mynetworks 2>/dev/null)
+  echo "$MN" | grep -qE '0\.0\.0\.0/0|::/0|all' \
+    && crit "postfix mynetworks = world (open-relay config)" || ok "mynetworks not world-wide (${MN:-unset})"
+fi
+
+# mysql hardening extras
+if [ -n "$MYSQL" ]; then
+  EP=$("$MYSQL" -N -e "SELECT CONCAT(user,'@',host) FROM mysql.user WHERE account_locked='N' AND authentication_string='' AND plugin LIKE '%password%' AND user NOT LIKE 'mysql%'" 2>/dev/null)
+  [ -n "$EP" ] && crit "mysql accounts with EMPTY password: $(echo $EP)" || ok "no empty-password mysql accounts"
+  LI=$("$MYSQL" -N -e "SHOW VARIABLES LIKE 'local_infile'" 2>/dev/null | awk '{print $2}')
+  [ "$LI" = "ON" ] && warn "local_infile ON (LOAD DATA file-read class)" || ok "local_infile off"
+fi
+
+# forgotten listeners that love to come back
+for u in tftpd tftp nfs-server rpcbind; do
+  systemctl is-enabled "$u" >/dev/null 2>&1 && systemctl is-active "$u" >/dev/null 2>&1 \
+    && warn "$u active (unscored — disable if unused)"
+done
+
 echo
 echo "=============== RESULT: ${CRIT} crit / ${WARN} warn ==============="
 [ $CRIT -gt 0 ] && echo "Fix CRITs first; one change-log line per fix. Re-sweep after."
