@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="330" font-family="'Cascadia Code','Consolas',monospace">
+  <rect width="920" height="330" rx="10" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <rect width="920" height="34" rx="10" fill="#161b22"/>
+  <circle cx="20" cy="17" r="5.5" fill="#ff5f57"/><circle cx="40" cy="17" r="5.5" fill="#febc2e"/><circle cx="60" cy="17" r="5.5" fill="#28c840"/>
+  <text x="460" y="22" fill="#8b949e" text-anchor="middle" font-size="12">runtime health check · is the scored service actually serving?</text>
+
+  <text x="24" y="66" font-size="13"><tspan fill="#3fb950" font-weight="bold">blueteam@ip-10-0-186-144</tspan><tspan fill="#79c0ff">:~$ </tspan><tspan fill="#e6edf3">sudo ss -tlnp | grep :502</tspan></text>
+  <text x="24" y="85" font-size="13" fill="#3fb950">LISTEN 0  5   0.0.0.0:502   users:(("openplc",pid=103692,fd=5))</text>
+  <text x="24" y="104" font-size="13" fill="#8b949e">                  ↑ Modbus TCP — THE scored service — up and serving</text>
+
+  <text x="24" y="133" font-size="13"><tspan fill="#3fb950" font-weight="bold">blueteam@ip-10-0-186-144</tspan><tspan fill="#79c0ff">:~$ </tspan><tspan fill="#e6edf3">sudo ss -tn | grep ':502 .*142'</tspan></text>
+  <text x="24" y="152" font-size="13" fill="#3fb950">ESTAB  10.0.186.144:502   10.0.186.142:52554</text>
+  <text x="24" y="171" font-size="13" fill="#8b949e">                          ↑ HMI (scoring box) connected — data is flowing</text>
+
+  <text x="24" y="200" font-size="13" fill="#8b949e">runtime log excerpt:</text>
+  <text x="24" y="219" font-size="13" fill="#e6edf3">  Issued start_modbus() command to start on port: 502</text>
+  <text x="24" y="238" font-size="13" fill="#e6edf3">  Server: Listening on port 502 · Server: waiting for new client...</text>
+  <text x="24" y="257" font-size="13" fill="#e6edf3">  Issued stop_dnp3() command</text>
+  <text x="24" y="283" font-size="13" fill="#3fb950" font-weight="bold">[OK] stop_dnp3() is BY DESIGN — DNP3 is PLC2's protocol (port 20000), not PLC1's</text>
+  <text x="24" y="302" font-size="13" fill="#8b949e"># recovery if 502 ever drops: web UI → Start PLC → re-check with the two commands above</text>
+</svg>

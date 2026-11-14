@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="330" font-family="'Cascadia Code','Consolas',monospace">
+  <rect width="920" height="330" rx="10" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <rect width="920" height="34" rx="10" fill="#161b22"/>
+  <circle cx="20" cy="17" r="5.5" fill="#ff5f57"/><circle cx="40" cy="17" r="5.5" fill="#febc2e"/><circle cx="60" cy="17" r="5.5" fill="#28c840"/>
+  <text x="460" y="22" fill="#8b949e" text-anchor="middle" font-size="12">blueteam@ip-10-0-186-144: ssh — F1 · sudoers NOPASSWD wildcard · fix + verification</text>
+
+  <text x="24" y="66" font-size="13"><tspan fill="#3fb950" font-weight="bold">blueteam@ip-10-0-186-144</tspan><tspan fill="#79c0ff">:~$ </tspan><tspan fill="#e6edf3">sudo grep -n NOPASSWD /etc/sudoers</tspan><tspan fill="#8b949e">   # BEFORE</tspan></text>
+  <text x="24" y="85" font-size="13" fill="#f85149" font-weight="bold">59:ALL ALL=(ALL) NOPASSWD: ALL</text>
+  <text x="24" y="104" font-size="13" fill="#8b949e"># every account on the box → passwordless root (line appended after @includedir = last-match-wins)</text>
+
+  <text x="24" y="137" font-size="13"><tspan fill="#3fb950" font-weight="bold">blueteam@ip-10-0-186-144</tspan><tspan fill="#79c0ff">:~$ </tspan><tspan fill="#e6edf3">sudo visudo</tspan><tspan fill="#8b949e">   # line 59 deleted, syntax-checked on save</tspan></text>
+
+  <text x="24" y="166" font-size="13"><tspan fill="#3fb950" font-weight="bold">blueteam@ip-10-0-186-144</tspan><tspan fill="#79c0ff">:~$ </tspan><tspan fill="#e6edf3">sudo grep -n NOPASSWD /etc/sudoers</tspan><tspan fill="#8b949e">   # AFTER</tspan></text>
+  <text x="24" y="185" font-size="13" fill="#8b949e">(no output)</text>
+
+  <text x="24" y="214" font-size="13"><tspan fill="#3fb950" font-weight="bold">blueteam@ip-10-0-186-144</tspan><tspan fill="#79c0ff">:~$ </tspan><tspan fill="#e6edf3">sudo visudo -c</tspan></text>
+  <text x="24" y="233" font-size="13" fill="#3fb950">/etc/sudoers: parsed OK</text>
+
+  <text x="24" y="262" font-size="13"><tspan fill="#3fb950" font-weight="bold">blueteam@ip-10-0-186-144</tspan><tspan fill="#79c0ff">:~$ </tspan><tspan fill="#e6edf3">sudo -u a.martinez sudo -n true 2&gt;/dev/null &amp;&amp; echo "STILL OPEN" || echo "fixed"</tspan></text>
+  <text x="24" y="281" font-size="13" fill="#3fb950" font-weight="bold">fixed</text>
+
+  <text x="24" y="311" font-size="13" fill="#8b949e"># verified: file-level (grep) + syntax (visudo -c) + behavioral (decoy account denied passwordless root)</text>
+</svg>
