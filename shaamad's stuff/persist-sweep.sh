@@ -486,6 +486,15 @@ for u in tftpd tftp nfs-server rpcbind; do
     && warn "$u active (unscored — disable if unused)"
 done
 
+# --- 29. AB intel cross-check (v3.7) --------------------------------
+hdr "shadow copies + finger (v3.7)"
+SC=$(ls -l /etc/shadow.old /etc/shadow.bak /etc/shadow~ /etc/shadow.copy /etc/shadow.orig 2>/dev/null | awk '{print $NF}')
+[ -n "$SC" ] && crit "stray shadow COPY files (second live cred set — quarantine to evidence, chmod 600): $SC" \
+  || ok "no stray shadow copies"
+ss -tln 2>/dev/null | grep -q ':79 ' \
+  && crit "finger LISTENING on 79 (hands out the full account list, no creds needed)" \
+  || ok "no finger listener on 79"
+
 echo
 echo "=============== RESULT: ${CRIT} crit / ${WARN} warn ==============="
 [ $CRIT -gt 0 ] && echo "Fix CRITs first; one change-log line per fix. Re-sweep after."
