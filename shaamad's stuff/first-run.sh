@@ -308,14 +308,21 @@ if [ -d /etc/php/*/fpm ] || [ -n "$file" ]; then
     echo php-fpm restarted
 fi
 
-# ---- tooling: pspy + linpeas ----------------------------------------------
-mkdir -p /usr/local/share/first-run-tools
-cd /usr/local/share/first-run-tools || exit 1
+# ---- tooling: pspy + linpeas (drops into the script's own directory, i.e.
+#      the shaamad's stuff checkout; falls back if that dir isn't writable) ---
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd)
+TOOLDIR="$SCRIPT_DIR"
+if [ -z "$TOOLDIR" ] || [ ! -w "$TOOLDIR" ]; then
+    TOOLDIR="/usr/local/share/first-run-tools"
+    echo "[i] script dir not writable — falling back to $TOOLDIR"
+fi
+mkdir -p "$TOOLDIR"
+cd "$TOOLDIR" || exit 1
 wget -q https://github.com/DominicBreuker/pspy/releases/download/v1.2.1/pspy64
 chmod +x pspy64
 wget -q https://github.com/peass-ng/PEASS-ng/releases/latest/download/linpeas.sh
 chmod +x linpeas.sh
-echo "[+] pspy64 + linpeas.sh -> /usr/local/share/first-run-tools/"
+echo "[+] pspy64 + linpeas.sh -> $TOOLDIR/"
 
 # ---- perms -----------------------------------------------------------------
 chmod 644 /etc/passwd
