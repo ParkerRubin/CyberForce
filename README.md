@@ -60,11 +60,12 @@ CyberForce\
     wininfo.ps1                  inventory: ports<->rules, unsigned bins, LLMNR/mDNS/SSDP, Run keys
     triage_full.ps1              fast triage: SUMMARY.txt, LOLBins+cmdlines, targeted Security events
     tools.ps1                    Sysinternals installer (ProcExp, Autoruns, Sigcheck, TCPView)
+    marcos scripts\              verify hardening.ps1 (72-pt PASS/FAIL audit) | local group auditing.ps1 (backup/purge/restore, CHANGES things) | general hardening (mail box).ps1 (lockdown, CHANGES things) | inbound rule audit.ps1 | audit outbound.ps1 | smb share.ps1 (captured report, not code) + README.md
     Mail-File\                   rotate-creds.ps1 | firewall-tuned.ps1 | REQUIRED-PORTS.md
     AD\                          rotate-creds.ps1 | firewall-tuned.ps1 | firewall-ad.ps1 | REQUIRED-PORTS.md
     HMI\                         rotate-creds.ps1 | firewall-tuned.ps1 (-ReportOnly) | REQUIRED-PORTS.md
   linux\                         <- generic Linux toolkit (push to Task / PLC1 / PLC2)
-    linux-vulnscan.sh            linpeas-style console report: accounts/persistence/SUID/sshd/creds/listeners/ICS services (--save = one file; --fix = safe auto-remediation; --fix-ssh = sshd hardening; AB boxes need --confirm-ab)
+    linux-vulnscan.sh            linpeas-style console report: accounts/persistence/SUID/sshd/creds/listeners/ICS services (--save = one file; --fix = safe auto-remediation; --fix-ssh = sshd hardening; AB boxes need --confirm-ab) — NOTE: actually lives at PLC1\linux-vuln-scans.sh (PLC1-scoped for now; verify paths before running on Task/PLC2)
     install-tools.sh             distro-detect (apt/zypper): nmap, tcpdump, gpg, sshpass + stages linpeas.sh into ~/cf-tools
     precomp-hardening.sh         PRE-COMP window only (before scoring starts): updates, junk-service/old.* cleanup, listener ID, optional fail2ban, scored-port self-check (--comp-day = disable fail2ban before scoring starts)
     linuxinfo.sh                 inventory, --save writes Inventory_<host>_<ts>/inventory.txt
@@ -74,7 +75,8 @@ CyberForce\
     PLC2\                        rotate-creds.sh | firewall-tuned.sh | REQUIRED-PORTS.md
   reference\                     cmd-cheatsheet.md | CCDC-command-dictionary.md | firewall-generic.ps1 | firewall-generic.sh
     pentest\                     web-recon.sh | web-vuln-tests.sh | master-vuln-checklist.md | install.sh
-  writeups\                      per-box hardening narratives (SecDoc-ready) — PLC1-hardening-log.md + img\ terminal-reconstruction SVGs
+  shaamad's stuff\               persist-sweep.sh (v3.8 baseline→diff tripwire — auto-detects Task/PLC1/PLC2, comp required-services matrix, WP deep, AB cross-checks) | secdoc-verify.sh (Task SecDoc rows, comp-day verified) | windows-sweep.ps1 (Windows tripwire) | first-run.sh (v2 bootstrap, SUSE-fixed) | intel docs (answer-key census, practice-key hunt map, SecDoc/anomaly rules, ICS addendum)
+  writeups\                      per-box hardening narratives (SecDoc-ready) — PLC1-hardening-log.md + img\ terminal-reconstruction SVGs + session handoff
   README.md
 ```
 
