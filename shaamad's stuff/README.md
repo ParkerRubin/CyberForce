@@ -121,3 +121,9 @@ consistency is graded; hand-drawn diagram > incomplete Visio; 22 vuln rows =
 Deltas from the Team23 ICS guide: radar = PLC2/DNP3 independent of PLC1/Modbus
 (check both streams after any incident), PLC2 persistence leads (inetd.conf,
 /root/.ssh, exim4), historian cred confirmed `CyberForce2026!`.
+
+### ab-quick-guide.md
+One-pager for the two Assume-Breach boxes (PLC2 .143, HMI .142): golden rules,
+first-30-min baseline commands, 30–60-min sweep cadence, PLC2 known state from
+the Team23 findings (inetd.conf/root-ssh/exim4 leads, MQTT peers, the
+shadow.old→Task chain), HMI first-walk checklist, evidence→SecDoc pipeline.
