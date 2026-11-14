@@ -37,7 +37,7 @@ before changing anything). Everything here is read-only.
 - HMI: re-run `windows-sweep.ps1` — new services = CRIT, flaps = WARN.
 - Check the ICS streams still alive (see commands below).
 
-## PLC2 (10.0.x.143, Debian, DNP3 + MQTT) — known state
+## PLC2 (10.0.186.143, Debian, DNP3 + MQTT) — known state
 
 From the Team23 AB findings handout (8 findings) + our cross-box analysis:
 
@@ -49,7 +49,7 @@ From the Team23 AB findings handout (8 findings) + our cross-box analysis:
   `theo.banks` — password reuse into Task. Those 3 accounts are `nologin` on
   the Task box already. If the hashes change on PLC2, re-check Task.
 - **MQTT baseline (known-good)**: PLC2 talks to scoreboard `192.168.0.41` and
-  bridges to PLC1 `10.0.x.144`. Watch for NEW MQTT peers:
+  bridges to PLC1 `10.0.186.144`. Watch for NEW MQTT peers:
   ```bash
   sudo ss -tnp | grep ':1883'
   ```
@@ -67,7 +67,7 @@ From the Team23 AB findings handout (8 findings) + our cross-box analysis:
   ps aux --sort=-%cpu | head -15              # odd CPU hogs
   ```
 
-## HMI (10.0.x.142, Windows) — UNEXAMINED, red foothold expected
+## HMI (10.0.186.142, Windows) — UNEXAMINED, red foothold expected
 
 Nobody has walked this box yet — expect pre-existing red persistence. First
 hour (all read-only):
