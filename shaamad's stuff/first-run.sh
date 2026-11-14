@@ -5,6 +5,10 @@
 # v2: dynamic webroot discovery + backup, openSUSE fixes (zypper flags, php-fpm
 #     names, netcat-openbsd), rustnet + binsider via GitHub releases,
 #     shell-file forensics backup.
+# v2.1 (comp-day): sshd config path detection (/usr/etc/ssh + sshd_config.d,
+#     Leap 16 has no /etc/ssh/sshd_config), systemctl preferred over deprecated
+#     `service` wrappers (correct arg order first), docker guard, backups to
+#     /var/tmp/first-run instead of /tmp (purge-timer safe).
 # NOTE: php.ini hardening intentionally REMOVED in v2 -- the risky flags
 #       (cookie_secure/max_execution_time/allow_url_fopen) break WP admin and
 #       the historian fetch on this HTTP-only scored box, and web exposure
@@ -12,7 +16,7 @@
 #       feeding the SecDoc instead.
 
 if [ -z "$BCK" ]; then
-    BCK="/tmp/"
+    BCK="/var/tmp/first-run"   # v2.1: /tmp gets purged by systemd cleanup timers; /var/tmp survives reboots
 fi
 
 BCK=$BCK/initial
@@ -215,7 +219,7 @@ $ESTB_CMD > $BCK/estab
 
 chmod 640 -R /root/
 
-docker ps >> $BCK/docker
+command -v docker >/dev/null 2>&1 && docker ps >> $BCK/docker || echo "no docker on this box" > $BCK/docker
 
 # pam
 mkdir -p $BCK/pam/conf
@@ -229,9 +233,17 @@ for m in $MOD; do
 done
 
 # ---- sshd hardening --------------------------------------------------------
-sys=$(command -v service || command -v systemctl)
-FILE=/etc/ssh/sshd_config
-if [ -f "$FILE" ]; then
+# v2.1: prefer systemctl (openSUSE deprecates the service/rc* wrappers); pick
+#       systemctl's arg order in the chains below.
+if command -v systemctl >/dev/null 2>&1; then sys="systemctl"; else sys="service"; fi
+# v2.1: Leap 16 may not have /etc/ssh/sshd_config -- vendor config can live in
+#       /usr/etc/ssh/ or as drop-ins in /etc/ssh/sshd_config.d/
+FILE=""
+for c in /etc/ssh/sshd_config /usr/etc/ssh/sshd_config; do
+    [ -f "$c" ] && { FILE="$c"; break; }
+done
+[ -z "$FILE" ] && FILE=$(ls /etc/ssh/sshd_config.d/*.conf 2>/dev/null | head -1)
+if [ -n "$FILE" ]; then
     SED="sed -i''"
     if sed --version >/dev/null 2>&1; then
         SED="sed -i"
@@ -261,7 +273,7 @@ if [ -f "$FILE" ]; then
         echo '    PubkeyAuthentication yes' >> "$FILE"
     fi
 else
-    echo "Could not find sshd config"
+    echo "Could not find sshd config (checked /etc/ssh, /usr/etc/ssh, sshd_config.d)"
 fi
 
 # ---- service restarts (openSUSE names: apache2, ssh, php-fpm) --------------
@@ -273,21 +285,21 @@ if [ -z $sys ]; then
   fi
   $RC restart
 else
-  $sys restart ssh || $sys ssh restart || $sys restart sshd || $sys sshd restart
+  $sys restart sshd || $sys sshd restart || $sys restart ssh || $sys ssh restart
 fi
 
 if [ -d /etc/nginx ]; then
-    $sys nginx restart || $sys restart nginx
+    $sys restart nginx || $sys nginx restart
     echo nginx restarted
 fi
 
 if [ -d /etc/apache2 ]; then
-    $sys apache2 restart || $sys restart apache2
+    $sys restart apache2 || $sys apache2 restart
     echo apache2 restarted
 fi
 
 if [ -d /etc/httpd ]; then
-    $sys httpd restart || $sys restart httpd
+    $sys restart httpd || $sys httpd restart
     echo httpd restarted
 fi
 
@@ -297,13 +309,13 @@ if [ -d /etc/lighttpd ]; then
 fi
 
 if [ -d /etc/ssh ]; then
-    $sys ssh restart || $sys restart ssh || $sys restart sshd || $sys sshd restart
+    $sys restart sshd || $sys sshd restart || $sys restart ssh || $sys ssh restart
     echo ssh restarted
 fi
 
 file=$(find /etc -maxdepth 3 -type f -name 'php-fpm*' -print -quit)
 if [ -d /etc/php/*/fpm ] || [ -n "$file" ]; then
-    $sys php-fpm restart || $sys restart php-fpm 2>/dev/null \
+    $sys restart php-fpm || $sys php-fpm restart 2>/dev/null \
         || systemctl restart 'php*fpm*' 2>/dev/null
     echo php-fpm restarted
 fi

@@ -3,6 +3,15 @@
 Shaamad's toolkit for CyberForce 2026 — complements the main repo's scripts,
 doesn't replace them. Read the deltas below to know which tool to run when.
 
+## Which script when
+
+| Situation | Run |
+|---|---|
+| Fresh box, first hour (prep day) | `first-run.sh` — bootstrap: tools + full backups |
+| Periodic check / "did red move?" | `persist-sweep.sh` — diff vs baseline |
+| About to submit SecDoc / after any fix | `secdoc-verify.sh` — re-verify every promise |
+| On a Windows box, same tripwire idea | `windows-sweep.ps1` |
+
 ## Scripts
 
 ### persist-sweep.sh (v3.8) — LEAP/UBUNTU/DEBIAN persistence tripwire
@@ -35,17 +44,42 @@ One script covers Task .145, PLC1 .144, and PLC2 .143.
 **v3.8** WP checks auth via wp-config creds; sudoers checks include
 `/usr/etc/sudoers.d` (openSUSE's second @includedir — a real blind spot).
 
-### first-run.sh (v2) — prep-day bootstrap (any distro, SUSE-fixed)
-The team first-run flow with fixes: dynamic webroot discovery (common paths +
-apache/nginx config-declared + wp-config/wp-load detection) with full backup,
-openSUSE corrections (`zypper -n`, netcat-openbsd, php-fpm service names),
-rustnet + binsider installed from GitHub releases (version-resolved, musl
-static for rustnet), merged sshd hardening block (NOPUB/AUTHKEY/ROOTPUB env
-options), per-user shell-file forensics backup. **php.ini hardening removed**
-— the risky flags break WP admin + the historian fetch on this HTTP-only box,
-and web exposure is covered by web-recon findings instead. pspy64 +
-linpeas.sh download into the script's own directory (the shaamad's stuff
-checkout) with a writable-dir fallback.
+### first-run.sh (v2.1) — prep-day bootstrap (any distro, SUSE-fixed)
+What it does, in order:
+
+1. **Package installs** for the distro it detects (zypper on openSUSE). Expect
+   noise: `not found` for nmap/auditd/unhide/whowatch is normal on Leap 16 —
+   they don't exist in its repos, the `|| true` keeps going. It also removes
+   netcat-openbsd (use `/dev/tcp` or socat instead afterward).
+2. **rustnet + binsider** from GitHub releases into `/usr/local/bin` — rustnet
+   = live per-process network TUI (your port scanner on Leap, since nmap is
+   unavailable), binsider = ELF/binary analyzer for examining anything red
+   drops.
+3. **Webroot discovery + backup** — finds Apache DocumentRoot/nginx
+   declarations, common paths, and any dir holding wp-config.php/wp-load.php,
+   then copies each into the backup dir before anything else touches them.
+4. **Full forensic backup** — `/etc`, `/bin` (a full merged-usr copy, expect
+   ~700 MB), `/root`, `/etc/passwd`+`group`, PAM configs + pam modules, and
+   every user's `.bashrc`/`.profile`/`.bash_history`/`.ssh` (rc implants and
+   history are evidence gold). Plus point-in-time captures of listening ports
+   and established connections.
+5. **sshd hardening** — appends PermitRootLogin no, PermitEmptyPasswords no,
+   AllowTcpForwarding no, X11Forwarding no (v2.1 finds the config in
+   /etc/ssh or /usr/etc/ssh or sshd_config.d — Leap 16 has no
+   /etc/ssh/sshd_config). Optional env toggles: NOPUB / AUTHKEY= / ROOTPUB=.
+6. **Restarts** sshd + the web stack it finds (v2.1 prefers systemctl; the
+   deprecated `service` deprecation warnings are gone). Brief blip — run
+   between scoring rounds, not mid-round.
+7. **pspy64 + linpeas.sh** land in the script's own directory (the shaamad's
+   stuff checkout), with a writable-dir fallback.
+
+Backup lands in **`/var/tmp/first-run/initial`** (v2.1; /tmp is purge-timer
+territory). What's worth grabbing from it later: `listen`/`estab` (port
+baseline), `homes/*/.*history` (pre-wipe evidence), `webroots/` (pre-deface
+copies), `pam/` (pre-tamper module copies). **php.ini hardening is
+intentionally NOT done** — the risky flags break WP admin + the historian
+fetch on this HTTP-only box; web exposure is covered by web-recon findings
+instead.
 
 ### secdoc-verify.sh (TASK-ONLY) — re-check every SecDoc promise
 Walks each Task vulnerability row in the Team23 Security Documentation (the two
