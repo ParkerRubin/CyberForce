@@ -17,6 +17,16 @@ polkit/motd/systemd-sockets baselines.
 Run: `sudo ./persist-sweep.sh` (add `--log` for a file, `--quiet` for cron).
 Exit code = # of CRIT findings.
 
+### secdoc-verify.sh (TASK-ONLY) — re-check every SecDoc promise
+Walks each Task vulnerability row in the Team23 Security Documentation (the two
+reinstalling backdoor services + immutable files, the 3 web shells + uploads
+perms, svc-backup cron, the 45926 root shell + fake `ls`, LAN-bridge keylogger,
+`cfc-redteam` key, sshd posture, ec2-user, firewall port set, extra `score` DB
+account, mysql nologin, ServerTokens, credentials.zip, default-password
+landmines). PASS/FAIL/WARN per row — FAIL = the SecDoc promise isn't currently
+true. Fix, flip the row to past tense, re-run until clean.
+Run: `sudo ./secdoc-verify.sh`
+
 ### windows-sweep.ps1 (v1) — WINDOWS persistence tripwire (same baseline→diff idea)
 Complements `win-vulnscan.ps1` (that one's the one-shot audit). This keeps a
 baseline under `HKLM:\ProgramData\winsweep` and diffs every run — new services =
