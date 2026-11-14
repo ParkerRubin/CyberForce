@@ -83,11 +83,11 @@ else warn "rpm unavailable — integrity check skipped"; fi
 
 # --- 3. sudo persistence --------------------------------------
 hdr "sudoers"
-basediff sudoers.d "ls /etc/sudoers.d/"
-find /etc/sudoers.d -type f -perm /022 2>/dev/null | grep -q . \
-  && crit "world/group-WRITABLE file in /etc/sudoers.d" || ok "sudoers.d perms sane"
-grep -rh "NOPASSWD" /etc/sudoers.d/ 2>/dev/null | grep -vq '^#' \
-  && warn "NOPASSWD lines in sudoers.d — confirm each is yours" || ok "no stray NOPASSWD"
+basediff sudoers.d "ls /etc/sudoers.d/ /usr/etc/sudoers.d/ 2>/dev/null"
+find /etc/sudoers.d /usr/etc/sudoers.d -type f -perm /022 2>/dev/null | grep -q . \
+  && crit "world/group-WRITABLE file in sudoers.d dirs" || ok "sudoers.d perms sane"
+grep -rh "NOPASSWD" /etc/sudoers.d/ /usr/etc/sudoers.d/ 2>/dev/null | grep -vq '^\s*#' \
+  && warn "NOPASSWD lines in sudoers.d (incl. /usr/etc) — confirm each is yours" || ok "no stray NOPASSWD"
 grep -E '^\s*(@|#)?include' /etc/sudoers 2>/dev/null | grep -v sudoers.d \
   && warn "non-standard include in /etc/sudoers" || ok "no odd sudoers includes"
 if [ "$(id -u)" -eq 0 ]; then
