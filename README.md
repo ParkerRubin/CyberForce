@@ -7,23 +7,23 @@ Official docs: https://github.com/CyberForceCompetition/2026_CyberForce_Competit
 
 ---
 
-## Environment (7 VMs, AWS VPC `10.0.x.0/27`, OpenVPN access)
+## Environment (7 VMs, AWS VPC `10.0.186.0/27`, OpenVPN access)
 
 ### Traditional infrastructure — full hardening allowed
 
-| VM | OS | IP | Required scored services | Default creds (rotate day 1!) |
-|---|---|---|---|---|
-| Task | OpenSUSE Leap | 10.0.x.145 | HTTP 80, MySQL 3306, SMB 139/445, SSH 22 | blueteam:BlueTeam2026! |
-| Mail/File | Windows Server 2019 | 10.0.x.140 | HFS 1080, SMTP 25, SSH 22 | blueteam:BlueTeam2026! |
-| AD | Windows Server 2022 | 10.0.x.141 | LDAP 389, SNMP 161/udp, SSH 22 | blueteam:BlueTeam2026! |
-| PLC1 | Ubuntu 24 | 10.0.x.144 | Modbus 502, OpenPLC 8080 (`openplc:openplc`) | blueteam:BlueTeam2026! |
+| VM | OS | IP | Instance ID | Required scored services | Default creds (rotate day 1!) |
+|---|---|---|---|---|---|
+| Task | OpenSUSE Leap | 10.0.186.145 | `i-0336f9f536b35ee3f` | HTTP 80, MySQL 3306, SMB 139/445, SSH 22 | blueteam:BlueTeam2026! |
+| Mail/File | Windows Server 2019 | 10.0.186.140 | `i-08d967d8fae36056e` | HFS 1080, SMTP 25, SSH 22 | blueteam:BlueTeam2026! |
+| AD | Windows Server 2022 | 10.0.186.141 | `i-06330690a6ed356dc` | LDAP 389, SNMP 161/udp, SSH 22 | blueteam:BlueTeam2026! |
+| PLC1 | Ubuntu 24 | 10.0.186.144 | `i-02b87b7ce7e0e7d38` | Modbus 502, OpenPLC 8080 (`openplc:openplc`) | blueteam:BlueTeam2026! |
 
 ### Assume-breach — MONITOR ONLY, extreme caution (report Red attack chains = 1000 Red pts)
 
-| VM | OS | IP | Required scored services | Default creds |
-|---|---|---|---|---|
-| PLC2 (DNP3) | Debian 13 | 10.0.x.143 | DNP3 20000, MQTT 1883 | blueteam:BlueTeam2026! |
-| HMI/CnC | Windows Server 2019 | 10.0.x.142 | Ignition Gateway 8088, MySQL historian 3306 (`historian:CyberForce2026!` — NEVER rotate) | blueteam:BlueTeam2026! |
+| VM | OS | IP | Instance ID | Required scored services | Default creds |
+|---|---|---|---|---|---|
+| PLC2 (DNP3) | Debian 13 | 10.0.186.143 | `i-06b36cef01fbc14c6` | DNP3 20000, MQTT 1883 | blueteam:BlueTeam2026! |
+| HMI/CnC | Windows Server 2019 | 10.0.186.142 | `i-0386746cabcbce8b0` | Ignition Gateway 8088, MySQL historian 3306 (`historian:CyberForce2026!` — NEVER rotate) | blueteam:BlueTeam2026! |
 
 Plus **1 Anomaly VM** (creds competition day only). Total 7 VMs, environment limited to those.
 
@@ -90,7 +90,7 @@ CyberForce\
 
 ### Self-pentest (attack your own boxes first)
 `reference\pentest\` + `CCDC-command-dictionary.md` are tools for the **self-pentest lane**: rules allow testing your OWN infrastructure and require finding its vulnerabilities for SecDoc (rubric wants a big mitigated vuln list; other infra off-limits).
-- Prep phase (pre-comp — continue on remaining boxes mid-event): run `web-recon.sh` against http://10.0.x.145 (Task WP site), 10.0.x.140:1080 (HFS), 10.0.x.142:8088 → ffuf/nuclei/quick-wins; then `web-vuln-tests.sh` on every form/param you find. Walk `master-vuln-checklist.md` per box (its sections A web / B creds / C Linux / + Windows-AD cover exactly what winpeas/linpeas surface too).
+- Prep phase (pre-comp — continue on remaining boxes mid-event): run `web-recon.sh` against http://10.0.186.145 (Task WP site), 10.0.186.140:1080 (HFS), 10.0.186.142:8088 → ffuf/nuclei/quick-wins; then `web-vuln-tests.sh` on every form/param you find. Walk `master-vuln-checklist.md` per box (its sections A web / B creds / C Linux / + Windows-AD cover exactly what winpeas/linpeas surface too).
 - nuclei against scoring boxes MUST be rate-limited (uptime = Blue points; don't DoS your own box): build `cf-targets.txt` from the web surfaces above, then `nuclei -l cf-targets.txt -rl 20 -c 5 -timeout 10 -silent`.
 - The FAU `report-generator` (in the FAU repo, not copied here) has ~35 prewritten findings (sudoers, suid, shadow, passwd, rootlogin, privatekeys, SQLi, XSS, NTLMv1, DefaultCredService, OutdatedService, weakDomainPassPolicy...) — perfect source language for the SecDoc "known vulnerabilities" table with CVSS.
 ### Scripts-first philosophy
