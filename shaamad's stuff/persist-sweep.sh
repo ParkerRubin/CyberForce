@@ -331,6 +331,50 @@ fi
 XA=$(getfattr -R -m 'user\.' -d /etc /root /home 2>/dev/null | grep '^# file' | head -5)
 [ -n "$XA" ] && warn "user.* xattrs present (hiding spot — getfattr -d to dump): $(echo $XA)" || ok "no user.* xattrs"
 
+# --- 26. wordpress deep (v3.2) -----------------------------------
+hdr "wordpress deep (v3.2)"
+WPD=/srv/www/vhosts/wordpress
+if [ -d "$WPD/wp-content" ]; then
+  # new plugin dir = seeded vuln (wp-file-manager lesson) — drop-ins/mu-plugins auto-load
+  basediff wp-plugins "ls $WPD/wp-content/plugins 2>/dev/null"
+  info "^ new plugin folder appears = inspect BEFORE activating (plugin CVE class)"
+  MU=$(ls "$WPD/wp-content/mu-plugins/" 2>/dev/null | head -5)
+  [ -n "$MU" ] && warn "mu-plugins present (auto-load, invisible in WP admin): $(echo $MU)" || ok "no mu-plugins"
+  DI=$(ls "$WPD/wp-content/db.php" "$WPD/wp-content/object-cache.php" "$WPD/wp-content/advanced-cache.php" 2>/dev/null)
+  [ -n "$DI" ] && warn "wp drop-ins present (auto-load code): $(echo $DI)" || ok "no wp drop-ins"
+  # the SecDoc's 'hidden add-on, couldn't disable from admin' class = require() in wp-config
+  basediff wp-config-hash "md5sum $WPD/wp-config.php 2>/dev/null | awk '{print \$1}'"
+  REQ=$(grep -nE '^\s*(require|include|require_once|include_once)' "$WPD/wp-config.php" 2>/dev/null | grep -vE 'wp-load|wp-settings|wp-blog-header' | head -3)
+  [ -n "$REQ" ] && crit "wp-config loads a non-core file (backdoor loader pattern): $(echo $REQ)" || ok "wp-config requires clean"
+  basediff htaccess-hash "md5sum $WPD/.htaccess 2>/dev/null | awk '{print \$1}'"
+  # WP users: admin inventory + green accounts MUST stay admin (rules-protected)
+  if command -v mysql >/dev/null; then
+    DB=$(grep -oP "define\(\s*'DB_NAME',\s*'\K[^']+" "$WPD/wp-config.php" 2>/dev/null | head -1)
+    PFX=$(grep -oP '\$table_prefix\s*=\s*"\K[^"]+' "$WPD/wp-config.php" 2>/dev/null | head -1)
+    PFX=${PFX:-wp_}
+    if [ -n "$DB" ]; then
+      ADMINS=$(mysql -N -D "$DB" -e "SELECT u.user_login FROM ${PFX}users u JOIN ${PFX}usermeta m ON u.ID=m.user_id WHERE m.meta_key='${PFX}capabilities' AND m.meta_value LIKE '%administrator%'" 2>/dev/null)
+      [ -n "$ADMINS" ] && info "WP admins: $(echo $ADMINS | tr '\n' ' ')" || warn "could not list WP admins (DB name/prefix?)"
+      echo "$ADMINS" | grep -q 'green-user' && ok "green-user is admin (rules-protected account alive)" \
+        || warn "green-user NOT in admin list — restore BEFORE green survey"
+      echo "$ADMINS" | grep -q 'green-admin' && ok "green-admin alive" \
+        || warn "green-admin NOT in admin list — restore BEFORE green survey"
+      basediff wp-users "mysql -N -D \"$DB\" -e 'SELECT user_login FROM ${PFX}users' 2>/dev/null"
+      info "^ new WP user = seeded account (census class #2)"
+    fi
+  fi
+else warn "wordpress not at $WPD — adjust WPD path or skip this section"; fi
+
+# --- 27. hosts / php-loader / keys / history secrets (v3.2) -------
+hdr "hosts, php-loader, keys, history (v3.2)"
+basediff hosts-file "cat /etc/hosts 2>/dev/null"
+AP=$(grep -rhsE '^\s*(auto_prepend_file|auto_append_file)' /etc/php*/*/php.ini /etc/php*/*/conf.d/*.ini "$WPD/.htaccess" /etc/apache2/*.conf /etc/apache2/conf.d/*.conf 2>/dev/null | head -3)
+[ -n "$AP" ] && crit "php auto_prepend/append_file set (hidden code loader): $(echo $AP)" || ok "no php auto-prepend"
+PK=$(find /root /home /srv /tmp /opt -xdev \( -name 'id_rsa' -o -name 'id_ed25519' -o -name '*.pem' -o -name '*.key' \) -type f 2>/dev/null | grep -v '/evidence' | head -5)
+[ -n "$PK" ] && warn "stray private keys (SecDoc privatekeys row): $(echo $PK)" || ok "no stray private keys"
+HS=$(grep -hiE 'password|passwd|secret|token|bearer|api[_-]?key' /root/.bash_history /home/*/.bash_history 2>/dev/null | grep -viE '^\s*#|^history' | head -4)
+[ -n "$HS" ] && warn "possible secrets in shell history — scrub these lines: $(echo $HS | head -3)" || ok "shell history clean of secret-looking lines"
+
 echo
 echo "=============== RESULT: ${CRIT} crit / ${WARN} warn ==============="
 [ $CRIT -gt 0 ] && echo "Fix CRITs first; one change-log line per fix. Re-sweep after."
