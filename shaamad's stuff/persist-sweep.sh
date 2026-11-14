@@ -49,7 +49,11 @@ basediff() {  # basediff <name> <listing-cmd> [baseline-comment]
 }
 
 [ "$(id -u)" -eq 0 ] || echo "[!] not root — several checks blind. sudo me."
-[ $LOG -eq 1 ] && exec > >(tee "sweep-$(date +%Y%m%d-%H%M%S).log") 2>&1
+
+# mysql client may live at /opt/mysql/bin/mysql; sudo secure_path hides it
+MYSQL=$(command -v mysql 2>/dev/null || true)
+[ -z "$MYSQL" ] && [ -x /usr/local/bin/mysql ] && MYSQL=/usr/local/bin/mysql
+[ -z "$MYSQL" ] && [ -x /opt/mysql/bin/mysql ] && MYSQL=/opt/mysql/bin/mysql[ $LOG -eq 1 ] && exec > >(tee "sweep-$(date +%Y%m%d-%H%M%S).log") 2>&1
 echo "persist-sweep v2 $(date '+%F %T') on $(hostname) — pid $$"
 
 # --- 1. accounts ---------------------------------------------
@@ -211,10 +215,10 @@ find /srv/www /var/www -name 'info.php' 2>/dev/null | grep -q . && warn "phpinfo
 
 # --- 14. mysql --------------------------------------------------
 hdr "mysql"
-if command -v mysql >/dev/null; then
-  W=$(mysql -N -e "SELECT CONCAT(user,'@',host) FROM mysql.user WHERE host='%'" 2>/dev/null | grep -vE '^(score1|score2)@')
+if [ -n "$MYSQL" ]; then
+  W=$("$MYSQL" -N -e "SELECT CONCAT(user,'@',host) FROM mysql.user WHERE host='%'" 2>/dev/null | grep -vE '^(score1|score2)@')
   [ -n "$W" ] && crit "unexpected @'%' mysql users: $(echo $W)" || ok "only score1/score2 @'%' (scoring)"
-  mysql -N -e "SELECT user FROM mysql.user WHERE user=''" 2>/dev/null | grep -q . \
+  "$MYSQL" -N -e "SELECT user FROM mysql.user WHERE user=''" 2>/dev/null | grep -q . \
     && crit "anonymous mysql user" || ok "no anon mysql users"
 else warn "mysql client missing — skipped"; fi
 
@@ -316,10 +320,10 @@ ODD=$(awk -F: '$1 ~ /^\./ || $1 ~ /[.:_-]$/ || $1 ~ /\.\./ {print $1}' /etc/pass
 
 # --- 24. mysql grants depth (v3) ---------------------------------
 hdr "mysql grants depth (v3)"
-if command -v mysql >/dev/null; then
-  RR=$(mysql -N -e "SELECT CONCAT(user,'@',host) FROM mysql.user WHERE user='root' AND host NOT IN ('localhost','127.0.0.1','::1')" 2>/dev/null)
+if [ -n "$MYSQL" ]; then
+  RR=$("$MYSQL" -N -e "SELECT CONCAT(user,'@',host) FROM mysql.user WHERE user='root' AND host NOT IN ('localhost','127.0.0.1','::1')" 2>/dev/null)
   [ -n "$RR" ] && crit "root reachable from non-localhost: $(echo $RR)" || ok "root localhost-only"
-  SP=$(mysql -N -e "SELECT CONCAT(user,'@',host) FROM mysql.user WHERE Super_priv='Y' AND user NOT IN ('root','mysql.sys','mysql.session','mysql.infoschema','score1','score2')" 2>/dev/null)
+  SP=$("$MYSQL" -N -e "SELECT CONCAT(user,'@',host) FROM mysql.user WHERE Super_priv='Y' AND user NOT IN ('root','mysql.sys','mysql.session','mysql.infoschema','score1','score2')" 2>/dev/null)
   [ -n "$SP" ] && warn "SUPER grant to non-system user: $(echo $SP)" || ok "no stray SUPER grants"
 else warn "mysql client missing — skipped"; fi
 
@@ -354,12 +358,12 @@ if [ -d "$WPD/wp-content" ]; then
   [ -n "$REQ" ] && crit "wp-config loads a non-core file (backdoor loader pattern): $(echo $REQ)" || ok "wp-config requires clean"
   basediff htaccess-hash "md5sum $WPD/.htaccess 2>/dev/null | awk '{print \$1}'"
   # WP users: admin inventory + green accounts MUST stay admin (rules-protected)
-  if command -v mysql >/dev/null; then
+  if [ -n "$MYSQL" ]; then
     DB=$(grep -oP "define\(\s*'DB_NAME',\s*'\K[^']+" "$WPD/wp-config.php" 2>/dev/null | head -1)
     PFX=$(grep -oP '\$table_prefix\s*=\s*"\K[^"]+' "$WPD/wp-config.php" 2>/dev/null | head -1)
     PFX=${PFX:-wp_}
     if [ -n "$DB" ]; then
-      ADMINS=$(mysql -N -D "$DB" -e "SELECT u.user_login FROM ${PFX}users u JOIN ${PFX}usermeta m ON u.ID=m.user_id WHERE m.meta_key='${PFX}capabilities' AND m.meta_value LIKE '%administrator%'" 2>/dev/null)
+      ADMINS=$("$MYSQL" -N -D "$DB" -e "SELECT u.user_login FROM ${PFX}users u JOIN ${PFX}usermeta m ON u.ID=m.user_id WHERE m.meta_key='${PFX}capabilities' AND m.meta_value LIKE '%administrator%'" 2>/dev/null)
       [ -n "$ADMINS" ] && info "WP admins: $(echo $ADMINS | tr '\n' ' ')" || warn "could not list WP admins (DB name/prefix?)"
       echo "$ADMINS" | grep -q 'green-user' && ok "green-user is admin (rules-protected account alive)" \
         || warn "green-user NOT in admin list — restore BEFORE green survey"
