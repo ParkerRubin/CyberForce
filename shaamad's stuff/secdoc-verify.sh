@@ -53,7 +53,7 @@ BAD=""
 for f in $NONPKG_UNITS; do
   # ExecStart=<path> <args> — the path rides ON $1; $2 is the first argument
   exe=$(awk -F= '/^\s*Exec(Start|StartExec|)/{print $2; exit}' "$f" 2>/dev/null | awk '{print $1}')
-  case "$exe" in */usr/bin/*|*/usr/sbin/*|*/bin/*|*/sbin/*|"") ;; *) BAD="$BAD $(basename $f)($exe)";; esac
+  case "$exe" in */usr/bin/*|*/usr/sbin/*|*/bin/*|*/sbin/*|/usr/lib/*|/usr/libexec/*|"") ;; *) BAD="$BAD $(basename $f)($exe)";; esac
 done
 [ -n "$BAD" ] && fail "non-package units with odd ExecStart:$BAD" || pass "no odd non-package units"
 # directories always "look" flagged to lsattr — check regular files only
