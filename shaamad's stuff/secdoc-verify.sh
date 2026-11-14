@@ -51,11 +51,13 @@ HITS=$(grep -rl 'BlueTeam2026' /etc /srv/www /home/blueteam /opt/mysql 2>/dev/nu
 hdr "backdoor services + immutable files (rows: reinstalling services)"
 BAD=""
 for f in $NONPKG_UNITS; do
-  exe=$(awk '/^\s*Exec/{print $2; exit}' "$f" 2>/dev/null)
+  # ExecStart=<path> <args> — the path rides ON $1; $2 is the first argument
+  exe=$(awk -F= '/^\s*Exec(Start|StartExec|)/{print $2; exit}' "$f" 2>/dev/null | awk '{print $1}')
   case "$exe" in */usr/bin/*|*/usr/sbin/*|*/bin/*|*/sbin/*|"") ;; *) BAD="$BAD $(basename $f)($exe)";; esac
 done
 [ -n "$BAD" ] && fail "non-package units with odd ExecStart:$BAD" || pass "no odd non-package units"
-IM=$(lsattr -R /etc/systemd/system /usr/local/bin /usr/local/sbin /etc/cron.d 2>/dev/null | awk '$1 ~ /[ia]/ {print $NF}' | head -5)
+# directories always "look" flagged to lsattr — check regular files only
+IM=$(find /etc/systemd/system /usr/local/bin /usr/local/sbin /etc/cron.d -type f 2>/dev/null | head -3000 | xargs -r lsattr -d 2>/dev/null | awk '$1 ~ /[ia]/ {print $NF}' | head -5)
 [ -n "$IM" ] && fail "immutable/append files still present (deletion-proof): $(echo $IM)" || pass "no immutable files in key dirs"
 
 # ---------- 3. web shell + uploads (rows: plugin shell, 2 upload shells, writable uploads) ----------
@@ -76,8 +78,9 @@ CB=$(grep -riE 'svc-backup|useradd' /etc/cron* /var/spool/cron 2>/dev/null | gre
 # ---------- 5. port-45926 root shell + fake ls (rows: disk-tool backdoor, ls replaced) ----------
 hdr "45926 shell + fake ls (rows: disk-tool backdoor, ls replaced)"
 ss -H -tln "( sport = :45926 )" 2>/dev/null | grep -q . && fail "port 45926 LISTENING" || pass "45926 closed"
-W=$(type -a ls 2>/dev/null | grep -v '/usr/bin/ls' | head -2)
-[ -n "$W" ] && fail "ls is shadowed: $(echo $W)" || pass "ls resolves to /usr/bin/ls"
+# merged-usr note: openSUSE reports /bin/ls, which IS /usr/bin/ls — resolve the real path
+LR=$(readlink -f "$(command -v ls)" 2>/dev/null)
+case "$LR" in /usr/bin/ls|/bin/ls) pass "ls resolves to /usr/bin/ls ($LR)";; *) fail "ls is shadowed: resolves to $LR";; esac
 
 # ---------- 6. LAN-bridge keylogger + cfc-redteam key (rows: password stealer, attacker key) ----------
 hdr "LAN-bridge + cfc-redteam key"
@@ -115,8 +118,11 @@ else fail "no firewall tool found (firewalld/ufw)"; fi
 
 # ---------- 9. database rows (score account, mysql shell) ----------
 hdr "database (rows: extra 'score' acct, mysql service login)"
-if command -v mysql >/dev/null 2>&1; then
-  SC=$(mysql -N -e "SELECT CONCAT(user,'@',host) FROM mysql.user WHERE user='score'" 2>/dev/null)
+MC=$(command -v mysql 2>/dev/null || true)
+[ -z "$MC" ] && [ -x /usr/local/bin/mysql ] && MC=/usr/local/bin/mysql
+[ -z "$MC" ] && [ -x /opt/mysql/bin/mysql ] && MC=/opt/mysql/bin/mysql
+if [ -n "$MC" ]; then
+  SC=$("$MC" -N -e "SELECT CONCAT(user,'@',host) FROM mysql.user WHERE user='score'" 2>/dev/null)
   [ -n "$SC" ] && fail "extra 'score' DB account still exists: $SC" || pass "extra 'score' account gone"
   SH=$(getent passwd mysql 2>/dev/null | awk -F: '{print $NF}')
   case "$SH" in */nologin|*/false|*"") pass "mysql account has no login shell ($SH)";; *) warn "mysql shell: $SH";; esac
@@ -131,8 +137,9 @@ ST=$(grep -rhs 'ServerTokens' /etc/apache2/httpd.conf /etc/apache2/*.conf /etc/a
 case "$ST" in *Prod*|*ServerTokens[[:space:]]+Prod*) pass "ServerTokens Prod";; *) warn "ServerTokens: ${ST:-not found} (doc promised hidden version)";; esac
 grep -rhs 'ServerSignature' /etc/apache2/*.conf /etc/apache2/conf.d/*.conf 2>/dev/null | grep -v '^\s*#' | grep -qi 'off' \
   && pass "ServerSignature off" || warn "ServerSignature not 'off'"
-CZ=$(find /home /root -name 'credentials.zip' 2>/dev/null)
-[ -n "$CZ" ] && fail "credentials.zip still present: $(echo $CZ)" || pass "credentials.zip gone"
+# quarantined = gone from circulation (evidence discipline: moved, not deleted)
+CZ=$(find /home /root -path '*/quarantine*' -prune -o -name 'credentials.zip' -print 2>/dev/null)
+[ -n "$CZ" ] && fail "credentials.zip still live outside quarantine: $(echo $CZ)" || pass "credentials.zip gone (quarantined = OK)"
 
 # ---------- summary ----------
 echo
